@@ -1,6 +1,7 @@
 //! `tokenburn-zed` — see the crate docs. `lsp` is the default mode, so Zed can
 //! start the binary with no arguments.
 
+use std::io::{BufRead, BufReader};
 use std::process::ExitCode;
 
 use serde_json::{json, Map, Value};
@@ -12,12 +13,16 @@ const HELP: &str = "\
 tokenburn-zed — AI token and cost usage for Zed (TokenBurn)
 
 USAGE:
-    tokenburn-zed [lsp]                 language server (status bar), what Zed starts
+    tokenburn-zed lsp                   language server (status bar), what Zed starts
     tokenburn-zed mcp                   MCP server with read-only usage tools
+    tokenburn-zed                       either: picks LSP or MCP from the first message
     tokenburn-zed status [OPTIONS]      print the status-bar line once
     tokenburn-zed report [OPTIONS]      print the full markdown report
+    tokenburn-zed dashboard [gui|web] [OPTIONS]
+                                        open tokenburn's desktop app or web dashboard
+                                        (tokenburn-gui / tokenburn-web) on that view
 
-OPTIONS (status, report):
+OPTIONS (status, report, dashboard):
     --period <hour|today|week|month|year|all>
     --tool <all|pi|zed|claude|codex|copilot|gemini|opencode|amp|cline|roo|kilo|qwen>
     --no-cache                          count input + output tokens only
@@ -60,20 +65,70 @@ fn config(args: &[String]) -> Result<Config, String> {
     Ok(cfg)
 }
 
+/// Which protocol a client speaks, from the first bytes it sent: MCP stdio is
+/// bare JSON (`{` or a `[` batch), LSP starts with a `Content-Length` header.
+#[derive(Debug, PartialEq, Eq)]
+enum Protocol {
+    Lsp,
+    Mcp,
+}
+
+fn sniff(input: &mut impl BufRead) -> std::io::Result<Protocol> {
+    loop {
+        let buf = input.fill_buf()?;
+        let Some(&first) = buf.first() else {
+            return Ok(Protocol::Lsp); // EOF: nothing to serve either way
+        };
+        if first.is_ascii_whitespace() {
+            input.consume(1);
+            continue;
+        }
+        return Ok(if first == b'{' || first == b'[' {
+            Protocol::Mcp
+        } else {
+            Protocol::Lsp
+        });
+    }
+}
+
+fn stdin() -> BufReader<std::io::Stdin> {
+    BufReader::new(std::io::stdin())
+}
+
 fn run(args: &[String]) -> Result<(), String> {
-    let (mode, rest) = match args.split_first() {
-        Some((m, rest)) => (m.as_str(), rest),
-        None => ("lsp", &[][..]),
+    let Some((mode, rest)) = args.split_first() else {
+        // No mode: a misconfigured client still gets the right server.
+        let mut input = stdin();
+        return match sniff(&mut input).map_err(|e| e.to_string())? {
+            Protocol::Lsp => lsp::run(input).map_err(|e| e.to_string()),
+            Protocol::Mcp => mcp::run(input).map_err(|e| e.to_string()),
+        };
     };
-    match mode {
-        "lsp" | "--stdio" => lsp::run().map_err(|e| e.to_string()),
-        "mcp" => mcp::run().map_err(|e| e.to_string()),
+    match mode.as_str() {
+        "lsp" | "--stdio" => lsp::run(stdin()).map_err(|e| e.to_string()),
+        "mcp" => mcp::run(stdin()).map_err(|e| e.to_string()),
         "status" => {
             let cfg = config(rest)?;
             let snap = engine::refresh(&cfg);
             println!("{}: {}", lsp::TITLE, snap.status.unwrap_or_default());
             for w in snap.warnings {
                 eprintln!("warning: {w}");
+            }
+            Ok(())
+        }
+        "dashboard" => {
+            let (kind, rest) = match rest.split_first() {
+                Some((k, r)) if k == "gui" || k == "web" => (k.as_str(), r),
+                _ => ("gui", rest),
+            };
+            let cfg = config(rest)?;
+            if kind == "gui" {
+                let path = tokenburn_zed::dashboard::open_gui(&cfg)?;
+                println!("started {}", path.display());
+            } else {
+                let (url, _child) =
+                    tokenburn_zed::dashboard::ensure_web(&cfg, std::time::Duration::from_secs(15))?;
+                println!("{url}");
             }
             Ok(())
         }
@@ -133,8 +188,27 @@ mod tests {
     }
 
     #[test]
+    fn sniff_tells_mcp_from_lsp() {
+        let mut mcp = std::io::Cursor::new(b"\n  {\"jsonrpc\":\"2.0\"}\n".to_vec());
+        assert_eq!(sniff(&mut mcp).unwrap(), Protocol::Mcp);
+        let mut rest = String::new();
+        mcp.read_line(&mut rest).unwrap();
+        assert!(
+            rest.starts_with('{'),
+            "only the whitespace is consumed: {rest:?}"
+        );
+        let mut batch = std::io::Cursor::new(b"[{}]".to_vec());
+        assert_eq!(sniff(&mut batch).unwrap(), Protocol::Mcp);
+        let mut lsp = std::io::Cursor::new(b"Content-Length: 2\r\n\r\n{}".to_vec());
+        assert_eq!(sniff(&mut lsp).unwrap(), Protocol::Lsp);
+        let mut empty = std::io::Cursor::new(Vec::new());
+        assert_eq!(sniff(&mut empty).unwrap(), Protocol::Lsp);
+    }
+
+    #[test]
     fn unknown_modes_are_errors_and_help_works() {
         assert!(run(&s(&["serve"])).is_err());
+        assert!(run(&s(&["dashboard", "web", "--period", "decade"])).is_err());
         assert!(run(&s(&["--help"])).is_ok());
         assert!(run(&s(&["--version"])).is_ok());
     }

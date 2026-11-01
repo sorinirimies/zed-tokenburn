@@ -213,3 +213,40 @@ fn the_mcp_server_answers_tool_calls() {
     assert!(text.contains("- turns: 1"), "{text}");
     assert!(text.contains("- cost: $0.50"), "{text}");
 }
+
+#[test]
+fn without_a_mode_the_protocol_is_detected() {
+    let home = fake_home();
+    // MCP: a JSON line.
+    let mut child = command(home.path(), &[])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    writeln!(
+        child.stdin.as_mut().unwrap(),
+        "{}",
+        json!({ "jsonrpc": "2.0", "id": 7, "method": "ping" })
+    )
+    .unwrap();
+    drop(child.stdin.take());
+    let out = child.wait_with_output().unwrap();
+    let reply: Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(reply["id"], 7);
+
+    // LSP: a Content-Length frame.
+    let mut child = command(home.path(), &[])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let out = BufReader::new(child.stdout.take().unwrap());
+    let mut lsp = Lsp { child, out };
+    lsp.send(json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": { "capabilities": {} } }));
+    assert_eq!(lsp.recv()["result"]["serverInfo"]["name"], "tokenburn-zed");
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
+    lsp.send(json!({ "jsonrpc": "2.0", "id": 2, "method": "shutdown" }));
+    while lsp.recv()["id"] != 2 {}
+    lsp.send(json!({ "jsonrpc": "2.0", "method": "exit" }));
+    assert!(lsp.child.wait().unwrap().success());
+}

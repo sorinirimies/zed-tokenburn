@@ -244,11 +244,10 @@ pub fn serve(
     Ok(())
 }
 
-/// The real thing on stdin/stdout.
-pub fn run() -> std::io::Result<()> {
+/// The real thing, reading `input` and writing stdout.
+pub fn run(input: impl BufRead) -> std::io::Result<()> {
     let cfg = Config::from_env();
-    let stdin = std::io::stdin();
-    serve(stdin.lock(), std::io::stdout(), &cfg, &crate::stats::load)
+    serve(input, std::io::stdout(), &cfg, &crate::stats::load)
 }
 
 #[cfg(test)]

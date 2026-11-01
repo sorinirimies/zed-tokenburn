@@ -15,6 +15,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::process::Child;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -36,18 +37,69 @@ pub const CMD_REPORT: &str = "tokenburn.openReport";
 pub const CMD_CYCLE: &str = "tokenburn.cyclePeriod";
 pub const CMD_PAUSE: &str = "tokenburn.togglePause";
 pub const CMD_REFRESH: &str = "tokenburn.refresh";
-pub const COMMANDS: [&str; 4] = [CMD_REPORT, CMD_CYCLE, CMD_PAUSE, CMD_REFRESH];
+pub const CMD_GUI: &str = "tokenburn.openDesktopDashboard";
+pub const CMD_WEB: &str = "tokenburn.openWebDashboard";
+pub const COMMANDS: [&str; 6] = [
+    CMD_REPORT,
+    CMD_GUI,
+    CMD_WEB,
+    CMD_CYCLE,
+    CMD_PAUSE,
+    CMD_REFRESH,
+];
 
 /// Computes a snapshot for a config (the real one reads the logs).
 pub type Refresher = Arc<dyn Fn(&Config) -> Snapshot + Send + Sync>;
 /// Writes the report for a config and returns its path.
 pub type ReportWriter = Arc<dyn Fn(&Config) -> Result<PathBuf, String> + Send + Sync>;
 
+/// Is a dashboard installed (`true` = the web one)?
+pub type Availability = Arc<dyn Fn(&Config, bool) -> bool + Send + Sync>;
+/// Start the desktop dashboard.
+pub type GuiLauncher = Arc<dyn Fn(&Config) -> Result<(), String> + Send + Sync>;
+/// Make sure the web dashboard runs: its URL and the process if one was started.
+pub type WebLauncher =
+    Arc<dyn Fn(&Config) -> Result<(String, Option<Child>), String> + Send + Sync>;
+
+/// Starts the dashboards (the real ones spawn `tokenburn-gui` / `tokenburn-web`).
+#[derive(Clone)]
+pub struct Dashboards {
+    /// Is the dashboard installed? (decides whether its code action is offered)
+    pub available: Availability,
+    /// Start the desktop app.
+    pub gui: GuiLauncher,
+    /// Make sure the web dashboard runs; its URL and the process if one was started.
+    pub web: WebLauncher,
+}
+
+impl Dashboards {
+    /// `tokenburn-gui` and `tokenburn-web` from PATH, `~/.cargo/bin` or the settings.
+    pub fn real() -> Self {
+        use crate::dashboard;
+        Self {
+            available: Arc::new(|cfg: &Config, web: bool| {
+                if web {
+                    dashboard::locate(dashboard::WEB, cfg.dashboard.web_path.as_deref()).is_some()
+                        || dashboard::is_tokenburn_web(cfg.dashboard.port)
+                } else {
+                    dashboard::locate(dashboard::GUI, cfg.dashboard.gui_path.as_deref()).is_some()
+                }
+            }),
+            gui: Arc::new(|cfg: &Config| dashboard::open_gui(cfg).map(|_| ())),
+            web: Arc::new(|cfg: &Config| dashboard::ensure_web(cfg, Duration::from_secs(15))),
+        }
+    }
+}
+
 /// Messages from the background threads to the main loop.
 #[derive(Debug)]
 pub enum Event {
     Snapshot(Snapshot),
     Report(Result<PathBuf, String>),
+    /// The web dashboard is up (URL, and the process if this server started it).
+    Web(Result<(String, Option<Child>), String>),
+    /// Something the user asked for failed; shown as a warning.
+    Failed(String),
 }
 
 /// Messages from the main loop to the refresh thread.
@@ -115,7 +167,19 @@ pub struct Server {
     cmds: Sender<Cmd>,
     events_tx: Sender<Event>,
     report: ReportWriter,
+    dashboards: Dashboards,
+    /// A web dashboard this server started; stopped when the server exits.
+    web_child: Option<Child>,
     logged: HashSet<String>,
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        if let Some(mut c) = self.web_child.take() {
+            let _ = c.kill();
+            let _ = c.wait();
+        }
+    }
 }
 
 /// Percent-encode a path as a `file://` URI (forward slashes, `C:` kept).
@@ -275,6 +339,20 @@ impl Server {
                 Level::Warn,
                 &format!("TokenBurn: could not write the report: {e}"),
             ),
+            Event::Web(Ok((url, child))) => {
+                if let Some(c) = child {
+                    if let Some(mut old) = self.web_child.replace(c) {
+                        let _ = old.kill();
+                    }
+                }
+                self.request(
+                    "window/showDocument",
+                    json!({ "uri": url, "external": true }),
+                );
+            }
+            Event::Web(Err(e)) | Event::Failed(e) => {
+                self.show_message(Level::Warn, &format!("TokenBurn: {e}"))
+            }
         }
     }
 
@@ -324,18 +402,32 @@ impl Server {
         self.send(resp);
     }
 
-    /// The code actions: plain commands, offered only when the client asks for
-    /// all kinds (never for format-on-save style `only` requests).
+    /// The code actions: plain commands, offered only where `code_actions` allows
+    /// (the first line by default) and only when the client asks for all kinds
+    /// (never for format-on-save style `only` requests).
     pub fn code_actions(&self, params: &Value) -> Value {
         let cfg = self.config();
         let restricted = params
             .pointer("/context/only")
             .is_some_and(|o| !o.is_null());
-        if !cfg.code_actions || restricted {
+        let line = params
+            .pointer("/range/start/line")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if !cfg.code_actions.offered_at(line) || restricted {
             return json!([]);
         }
         let cmd = |title: String, command: &str| json!({ "title": title, "command": command });
         let mut out = vec![cmd("🔥 TokenBurn: open usage report".into(), CMD_REPORT)];
+        if (self.dashboards.available)(&cfg, false) {
+            out.push(cmd(
+                "🔥 TokenBurn: open the desktop dashboard".into(),
+                CMD_GUI,
+            ));
+        }
+        if (self.dashboards.available)(&cfg, true) {
+            out.push(cmd("🔥 TokenBurn: open the web dashboard".into(), CMD_WEB));
+        }
         if cfg.enabled {
             out.push(cmd(
                 format!(
@@ -361,6 +453,24 @@ impl Server {
                 let tx = self.events_tx.clone();
                 std::thread::spawn(move || {
                     let _ = tx.send(Event::Report(writer(&cfg)));
+                });
+            }
+            CMD_GUI => {
+                let cfg = self.config();
+                let gui = self.dashboards.gui.clone();
+                let tx = self.events_tx.clone();
+                std::thread::spawn(move || {
+                    if let Err(e) = gui(&cfg) {
+                        let _ = tx.send(Event::Failed(e));
+                    }
+                });
+            }
+            CMD_WEB => {
+                let cfg = self.config();
+                let web = self.dashboards.web.clone();
+                let tx = self.events_tx.clone();
+                std::thread::spawn(move || {
+                    let _ = tx.send(Event::Web(web(&cfg)));
                 });
             }
             CMD_CYCLE => {
@@ -402,7 +512,12 @@ pub fn capabilities() -> Value {
 }
 
 /// Serve on `conn` until the client exits.
-pub fn serve(conn: Connection, refresh: Refresher, report: ReportWriter) -> Result<()> {
+pub fn serve(
+    conn: Connection,
+    refresh: Refresher,
+    report: ReportWriter,
+    dashboards: Dashboards,
+) -> Result<()> {
     let (id, params) = conn.initialize_start()?;
     conn.initialize_finish(id, capabilities())?;
 
@@ -427,6 +542,8 @@ pub fn serve(conn: Connection, refresh: Refresher, report: ReportWriter) -> Resu
         cmds: cmds_tx,
         events_tx: events_tx.clone(),
         report,
+        dashboards,
+        web_child: None,
         logged: HashSet::new(),
     };
     if !server.progress.supported {
@@ -451,20 +568,48 @@ pub fn serve(conn: Connection, refresh: Refresher, report: ReportWriter) -> Resu
     Ok(())
 }
 
-/// The real thing on stdin/stdout.
-pub fn run() -> Result<()> {
-    let (conn, io) = Connection::stdio();
+/// A connection over `input` (already buffered, possibly peeked into) and stdout.
+///
+/// `lsp_server::Connection::stdio` owns stdin itself; this variant exists so
+/// `tokenburn-zed` without arguments can look at the first byte to tell LSP from
+/// MCP and still hand every byte to the server.
+pub fn connection(mut input: impl std::io::BufRead + Send + 'static) -> Connection {
+    let (to_server, from_client) = crossbeam_channel::bounded::<Message>(0);
+    let (to_client, from_server) = crossbeam_channel::bounded::<Message>(0);
+    std::thread::spawn(move || {
+        while let Ok(Some(msg)) = Message::read(&mut input) {
+            let exit = matches!(&msg, Message::Notification(n) if n.method == "exit");
+            if to_server.send(msg).is_err() || exit {
+                break;
+            }
+        }
+    });
+    std::thread::spawn(move || {
+        let mut out = std::io::stdout().lock();
+        for msg in from_server {
+            if msg.write(&mut out).is_err() {
+                break;
+            }
+        }
+    });
+    Connection {
+        sender: to_client,
+        receiver: from_client,
+    }
+}
+
+/// The real thing, reading `input` and writing stdout.
+pub fn run(input: impl std::io::BufRead + Send + 'static) -> Result<()> {
     let refresh: Refresher = Arc::new(engine::refresh);
     let report: ReportWriter = Arc::new(|cfg: &Config| crate::write_report(cfg));
-    serve(conn, refresh, report)?;
-    io.join()?;
-    Ok(())
+    serve(connection(input), refresh, report, Dashboards::real())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokenburn_core::ToolFilter;
 
     const T: Duration = Duration::from_secs(5);
 
@@ -495,7 +640,19 @@ mod tests {
             });
             let report: ReportWriter =
                 Arc::new(|_: &Config| Ok(PathBuf::from("/tmp/tb report.md")));
-            let thread = std::thread::spawn(move || serve(server, refresh, report).unwrap());
+            let dashboards = Dashboards {
+                available: Arc::new(|cfg: &Config, web: bool| web || cfg.tool == ToolFilter::All),
+                gui: Arc::new(|cfg: &Config| {
+                    if cfg.period == Span::All {
+                        Err("tokenburn-gui is not installed — `cargo install tokenburn-gui`".into())
+                    } else {
+                        Ok(())
+                    }
+                }),
+                web: Arc::new(|cfg: &Config| Ok((crate::dashboard::web_url(4321, cfg), None))),
+            };
+            let thread =
+                std::thread::spawn(move || serve(server, refresh, report, dashboards).unwrap());
             client
                 .sender
                 .send(
@@ -657,8 +814,10 @@ mod tests {
             .iter()
             .map(|a| a["title"].as_str().unwrap())
             .collect();
-        assert_eq!(titles.len(), 3, "{titles:?}");
-        assert!(titles[1].contains("→ week (now today)"));
+        assert_eq!(titles.len(), 5, "{titles:?}");
+        assert!(titles[1].contains("desktop dashboard"));
+        assert!(titles[2].contains("web dashboard"));
+        assert!(titles[3].contains("→ week (now today)"));
 
         h.request(
             3,
@@ -678,8 +837,8 @@ mod tests {
             (Some(token.as_str()), Some("end"))
         );
         let actions = h.request(5, "textDocument/codeAction", doc);
-        assert_eq!(actions.as_array().unwrap().len(), 2);
-        assert!(actions[1]["title"].as_str().unwrap().contains("resume"));
+        assert_eq!(actions.as_array().unwrap().len(), 4);
+        assert!(actions[3]["title"].as_str().unwrap().contains("resume"));
 
         // Resume: a fresh token, since the old one ended.
         h.request(
@@ -716,6 +875,39 @@ mod tests {
     }
 
     #[test]
+    fn code_actions_live_on_the_first_line_by_default() {
+        let h = Harness::start(true, Value::Null);
+        h.accept_create();
+        let _ = h.progress();
+        let at = |line: u64| {
+            json!({ "textDocument": { "uri": "file:///a.rs" },
+            "range": { "start": { "line": line, "character": 0 }, "end": { "line": line, "character": 0 } },
+            "context": { "diagnostics": [] } })
+        };
+        assert_eq!(
+            h.request(2, "textDocument/codeAction", at(0))
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
+        assert_eq!(h.request(3, "textDocument/codeAction", at(7)), json!([]));
+        h.notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "code_actions": "everywhere" } }),
+        );
+        // The setting applies to the next request.
+        assert_eq!(
+            h.request(4, "textDocument/codeAction", at(7))
+                .as_array()
+                .unwrap()
+                .len(),
+            5
+        );
+        h.stop();
+    }
+
+    #[test]
     fn open_report_shows_the_document() {
         let h = Harness::start(true, Value::Null);
         h.accept_create();
@@ -730,6 +922,51 @@ mod tests {
                 assert_eq!(r.method, "window/showDocument");
                 assert_eq!(r.params["uri"], "file:///tmp/tb%20report.md");
                 assert_eq!(r.params["takeFocus"], true);
+            }
+            other => panic!("{other:?}"),
+        }
+        h.stop();
+    }
+
+    #[test]
+    fn dashboards_open_in_the_browser_or_report_why_not() {
+        let h = Harness::start(true, json!({ "period": "month", "tool": "pi" }));
+        h.accept_create();
+        let _ = h.progress();
+        // The GUI is "missing" for tool=pi in this fake, so no action is offered…
+        let doc = json!({ "context": { "diagnostics": [] } });
+        let titles = h.request(2, "textDocument/codeAction", doc);
+        assert!(
+            !titles.to_string().contains("desktop dashboard"),
+            "{titles}"
+        );
+        // …and the web dashboard opens externally on the status bar's view.
+        h.request(3, "workspace/executeCommand", json!({ "command": CMD_WEB }));
+        match h.recv_skip_logs() {
+            Message::Request(r) => {
+                assert_eq!(r.method, "window/showDocument");
+                assert_eq!(r.params["external"], true);
+                assert_eq!(
+                    r.params["uri"],
+                    "http://127.0.0.1:4321/?tool=pi&bucket=daily&window=month"
+                );
+            }
+            other => panic!("{other:?}"),
+        }
+        // A failing GUI start becomes a warning, not a protocol error.
+        h.notify(
+            "workspace/didChangeConfiguration",
+            json!({ "settings": { "period": "all" } }),
+        );
+        let _ = h.progress();
+        h.request(4, "workspace/executeCommand", json!({ "command": CMD_GUI }));
+        match h.recv_skip_logs() {
+            Message::Notification(n) => {
+                assert_eq!(n.method, "window/showMessage");
+                assert!(n.params["message"]
+                    .as_str()
+                    .unwrap()
+                    .contains("cargo install tokenburn-gui"));
             }
             other => panic!("{other:?}"),
         }
