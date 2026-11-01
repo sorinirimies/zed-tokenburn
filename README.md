@@ -45,15 +45,20 @@ their cost is `$0.00` rather than a guess (token counts are exact).
 
 Zed extensions run as sandboxed WebAssembly and have **no API for status-bar items or
 commands**. What Zed *does* show in its status bar is a language server's work-done
-progress. So the extension is two pieces:
+progress. So there are two small extensions and one native binary:
 
 ```
-┌────────────── Zed ──────────────┐        ┌──────── tokenburn-zed (native) ───────┐
-│ extension (wasm, src/)          │ starts │ lsp: one $/progress kept open,        │
-│  • language server "tokenburn"  ├───────▶│      message = the status line        │──▶ tokenburn-core
-│  • context server  "tokenburn"  │        │ mcp: read-only usage tools            │    (local logs)
-└─────────────────────────────────┘        └───────────────────────────────────────┘
+┌─────────────────── Zed ───────────────────┐        ┌──────── tokenburn-zed (native) ───────┐
+│ TokenBurn            (tokenburn, src/)    │ starts │ lsp: one $/progress kept open,        │
+│  • language server "tokenburn"            ├───────▶│      message = the status line        │──▶ tokenburn-core
+│ TokenBurn MCP Server (tokenburn-mcp-server│        │ mcp: read-only usage tools            │    (local logs)
+│  , mcp/) • context server "tokenburn"     ├───────▶│                                       │
+└───────────────────────────────────────────┘        └───────────────────────────────────────┘
 ```
+
+Two extensions because Zed's registry wants an MCP server extension to provide exactly
+one context server and nothing else. Install either or both; they share the binary
+download code (`src/download.rs`, `src/resolve.rs`, `src/platform.rs`).
 
 * The **language server** never reads or changes your code. It is registered for ~260
   languages only so it runs whatever file is open. It keeps one progress titled
@@ -69,24 +74,27 @@ progress. So the extension is two pieces:
 
 ## Install
 
-1. **Zed → Extensions** (`zed: extensions`) → search **TokenBurn** → Install.
+1. **Zed → Extensions** (`zed: extensions`) → search **TokenBurn** → Install (and
+   **TokenBurn MCP Server** for the agent tools).
 2. Open any file. The extension downloads `tokenburn-zed` for your platform from the
    [latest release](https://github.com/sorinirimies/zed-tokenburn/releases) (macOS
    arm64/x86-64, Linux arm64/x86-64 static, Windows x86-64) and the status bar shows
    `TokenBurn: 🔥 …`. (Zed starts language servers only in projects you trust; it asks
    once per project.)
 
-Prefer your own build? Put it on `PATH` and the extension uses it instead:
+Prefer your own build? Put it on `PATH` and the status bar uses it instead (for the
+MCP server set `binary_path`, below — a context server has no PATH to search):
 
 ```sh
 cargo install tokenburn-zed
 ```
 
-From source (dev extension):
+From source (dev extensions):
 
 ```sh
-just dev    # installs tokenburn-zed, builds the wasm
-# Zed: command palette → "zed: install dev extension" → pick this folder
+just dev    # installs tokenburn-zed, builds both wasm modules
+# Zed: command palette → "zed: install dev extension" → pick this folder,
+# and again → pick ./mcp
 ```
 
 ## Use
@@ -106,11 +114,15 @@ that has code actions; `"code_actions": "everywhere"` offers them on every line,
 `"off"` (or `false`) not at all. Cycling and pausing last until Zed restarts the server
 or the settings change; put permanent choices in the settings.
 
-**Agent panel**: enable the *TokenBurn* context server (Agent settings → MCP servers)
-and ask, e.g. *"Use tokenburn to show my daily token chart"*. The context server uses
-the binary the language server found (or downloads it); to point it at your own build
-instead, configure it as a custom server — `tokenburn-zed` picks MCP or LSP from the
-first message, so no arguments are needed:
+**Agent panel**: install *TokenBurn MCP Server*, enable it (Agent settings → MCP
+servers) and ask, e.g. *"Use tokenburn to show my daily token chart"*. It downloads
+the binary from the latest release unless `binary_path` points at your own build:
+
+```jsonc
+"context_servers": { "tokenburn": { "settings": { "binary_path": "/path/to/tokenburn-zed" } } }
+```
+
+Without the MCP extension, the same server works as a plain custom server:
 
 ```jsonc
 "context_servers": { "tokenburn": { "command": "/path/to/tokenburn-zed", "args": ["mcp"] } }
@@ -168,7 +180,10 @@ Zed `settings.json` — everything optional:
   },
   "context_servers": {
     "tokenburn": {
-      "settings": { "tool": "all" }  // same keys; the defaults of the MCP tools
+      "settings": {
+        "tool": "all"                  // same keys; the defaults of the MCP tools
+        // "binary_path": "/path/to/tokenburn-zed"   // MCP extension: skip the download
+      }
     }
   }
 }
@@ -199,8 +214,12 @@ just audit deny   # supply chain
 Layout:
 
 ```
-extension.toml, src/           the Zed extension (wasm32-wasip2): finds/downloads the binary
-configuration/                 MCP server instructions, settings schema, defaults
+extension.toml, src/           the status-bar extension "tokenburn" (wasm32-wasip2)
+  resolve.rs, download.rs,     finding/downloading the binary — pure decisions are unit-tested;
+  platform.rs                  shared with the MCP extension via #[path]
+mcp/                           the MCP server extension "tokenburn-mcp-server"
+  extension.toml, src/, LICENSE → ../LICENSE
+  configuration/               its instructions, settings schema, defaults
 crates/tokenburn-zed/src/
   span.rs      hour/today/week/month/year/all boundaries (local time, Monday weeks)
   config.rs    lenient settings parsing (a bad key never breaks the rest)
@@ -229,28 +248,18 @@ Dependabot for actions. Commits follow [Conventional Commits](https://www.conven
 just release 0.2.0
 ```
 
-bumps `Cargo.toml` **and** `extension.toml` (CI refuses a tag where they differ),
+bumps `Cargo.toml`, `extension.toml` **and** `mcp/extension.toml` (CI refuses a tag
+where they differ),
 regenerates the changelog, commits, tags and pushes. The tag builds the five binaries
 the extension downloads, creates the GitHub release and publishes `tokenburn-zed` to
 crates.io (`CRATES_IO_TOKEN`).
 
 ### Publishing the extension
 
-Once the first release exists, add it to [zed-industries/extensions](https://github.com/zed-industries/extensions):
-
-```sh
-git submodule add https://github.com/sorinirimies/zed-tokenburn.git extensions/tokenburn
-```
-
-```toml
-# extensions.toml
-[tokenburn]
-submodule = "extensions/tokenburn"
-version = "0.1.0"
-```
-
-then `pnpm sort-extensions` and open a PR. For updates, bump the submodule and the
-version.
+Once the first release exists, add both to
+[zed-industries/extensions](https://github.com/zed-industries/extensions) — **one PR
+per extension** (the registry's rule), both pointing at the same submodule. See
+[`docs/publishing.md`](docs/publishing.md) for the exact steps and PR texts.
 
 ## Related
 
