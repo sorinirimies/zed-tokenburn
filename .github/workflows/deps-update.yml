@@ -6,7 +6,7 @@ name: Nightly dependency update
 
 on:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 2 * * *" # 02:00 UTC (Gitea runs at 02:30)
   workflow_dispatch:
 
 permissions:
@@ -14,6 +14,11 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+
+# Never cancel mid-run: a half-finished push would leave main inconsistent.
+concurrency:
+  group: deps-update
+  cancel-in-progress: false
 
 jobs:
   update:
