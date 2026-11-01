@@ -33,6 +33,10 @@ install-tools:
 
 # ── Build ─────────────────────────────────────────────────────────────────────
 
+# Check without building
+check:
+    cargo check --workspace
+
 # Build the native server (dev)
 build:
     cargo build -p tokenburn-zed
@@ -99,6 +103,19 @@ clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo clippy -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 -- -D warnings
 
+# Rust and Nu tests
+test-all-nu: test test-nu
+    @echo "✅ All Rust and Nu tests passed!"
+
+# Line coverage (needs cargo-llvm-cov); writes target/llvm-cov/html
+coverage:
+    cargo llvm-cov --workspace --html
+    @echo "→ target/llvm-cov/html/index.html"
+
+# Docs for the workspace (no browser)
+doc:
+    cargo doc --no-deps --workspace
+
 # Everything CI runs (fmt check, clippy, wasm build, tests, versions, nu tests)
 check-all: fmt _check-nu
     nu scripts/ci/quality_gate.nu
@@ -119,6 +136,60 @@ fuzz target="mcp_message" secs="60":
 fuzz-all secs="30":
     for t in $(cargo +nightly fuzz list); do cargo +nightly fuzz run "$t" -- -max_total_time={{ secs }} || exit 1; done
 
+# List the fuzz targets
+fuzz-list:
+    cargo +nightly fuzz list
+
+# Security + fuzz locally, like the nightly workflows
+nightly-local: audit deny fuzz-all
+
+# ── Dependencies ──────────────────────────────────────────────────────────────
+
+# Update Cargo.lock and fuzz/Cargo.lock (semver-compatible only)
+update:
+    cargo update
+    cd fuzz && cargo update
+
+# Show outdated dependencies (needs cargo-outdated)
+outdated:
+    cargo outdated --workspace
+
+# What the nightly workflow does: update, full gate, commit and push if green
+update-deps: update check-all
+    git add Cargo.lock fuzz/Cargo.lock
+    git diff --cached --quiet || git commit -m "chore(deps): update dependencies"
+    git push origin "$(git branch --show-current)"
+    @echo "✅ Dependency updates pushed to GitHub."
+
+# ── Nightly workflows on demand ───────────────────────────────────────────────
+
+# Run a GitHub workflow now (deps-update | security | fuzz | ci), needs gh
+gh-run workflow="deps-update":
+    gh workflow run {{ workflow }}.yml
+    @echo "✅ Dispatched {{ workflow }} — gh run watch"
+
+# Run a Gitea workflow now (deps-update | security | fuzz); needs GITEA_URL + GITEA_TOKEN
+gitea-run workflow="deps-update":
+    #!/usr/bin/env sh
+    set -e
+    : "${GITEA_URL:?set GITEA_URL, e.g. http://192.168.1.44:3000}"
+    : "${GITEA_TOKEN:?set GITEA_TOKEN (a Gitea access token with repo scope)}"
+    curl -sf -X POST "$GITEA_URL/api/v1/repos/sorin/zed-tokenburn/actions/workflows/{{ workflow }}.yml/dispatches" \
+        -H "Authorization: token $GITEA_TOKEN" -H "Content-Type: application/json" -d '{"ref":"main"}'
+    echo "✅ Dispatched {{ workflow }} on Gitea"
+
+# The nightly dependency update, now, on both hosts
+deps-update-now: (gh-run "deps-update")
+    -just gitea-run deps-update
+
+# Security audit workflow, now, on both hosts
+security-now: (gh-run "security")
+    -just gitea-run security
+
+# Fuzz workflow, now, on both hosts
+fuzz-now: (gh-run "fuzz")
+    -just gitea-run fuzz
+
 # ── Changelog ─────────────────────────────────────────────────────────────────
 
 # Regenerate CHANGELOG.md from all tags
@@ -128,6 +199,10 @@ changelog: _check-git-cliff
 # Preview the next release's changelog
 changelog-preview: _check-git-cliff
     @git-cliff --unreleased
+
+# Prepend only the unreleased commits to CHANGELOG.md
+changelog-unreleased: _check-git-cliff
+    git-cliff --unreleased --prepend CHANGELOG.md
 
 # Show the latest release's entry
 changelog-latest: _check-git-cliff
@@ -143,7 +218,26 @@ version: _check-nu
 check-versions tag="": _check-nu
     nu scripts/ci/check_versions.nu {{ tag }}
 
-# Bump Cargo.toml + extension.toml + Cargo.lock, regenerate the changelog, commit and tag
+# Validate that a version gives a valid vX.Y.Z tag
+validate-tag version: _check-nu
+    nu scripts/ci/validate_tag.nu "v{{ version }}"
+
+# What would be released, without changing anything
+release-preview: _check-git-cliff _check-nu
+    @echo "Current version: $(nu scripts/version.nu)"
+    @echo ""
+    @git-cliff --unreleased
+    @echo "Ships: tokenburn-zed (crates.io + 5 binaries), extensions tokenburn + tokenburn-mcp-server"
+
+# Everything in check-all plus a release build of the native binary
+check-release: check-all build-release
+    @echo "✅ Release gate passed"
+
+# Dry-run the crates.io publish of the native binary
+publish-dry:
+    cargo publish --dry-run -p tokenburn-zed
+
+# Bump Cargo.toml + both extension.toml + Cargo.lock, regenerate the changelog, commit and tag
 bump version: _check-nu _check-git-cliff check-all
     nu scripts/bump_version.nu --yes --skip-checks {{ version }}
 
@@ -166,6 +260,21 @@ release-initial: _check-nu _check-git-cliff check-all
     git tag -a "$tag" -m "Release $tag"
     git push --follow-tags origin "$(git branch --show-current)"
 
+# Bump, tag and push to every remote — starts the Release workflows on both hosts
+release-all version: (bump version) push-all
+
+# Bump, tag and push to Gitea only
+release-gitea-starscream version: (bump version)
+    git push --follow-tags gitea-starscream "$(git branch --show-current)"
+
+# First release, pushed to every remote
+release-initial-all: release-initial
+    -git push --follow-tags gitea-starscream "$(git branch --show-current)"
+
+# Re-run the GitHub Release workflow for an existing tag (e.g. just release-retrigger 0.1.0)
+release-retrigger version:
+    gh workflow run release.yml --field tag=v{{ version }}
+
 # Package a release binary locally (e.g. just package aarch64-apple-darwin)
 package target:
     cargo build --release --locked -p tokenburn-zed --target {{ target }}
@@ -184,6 +293,68 @@ push-all:
         git push --follow-tags "$r" "$(git branch --show-current)" || failed="$failed $r"
     done
     [ -z "$failed" ] || { echo "⚠️  Failed:$failed"; exit 1; }
+
+# Show all configured remotes
+remotes:
+    @git remote -v
+
+# Push the current branch to GitHub
+push:
+    git push origin "$(git branch --show-current)"
+
+# Push the current branch to Gitea Starscream
+push-gitea-starscream:
+    git push gitea-starscream "$(git branch --show-current)"
+
+# Push all tags to GitHub
+push-tags:
+    git push origin --tags
+
+# Push all tags to every remote (continues on failure)
+push-tags-all:
+    #!/usr/bin/env sh
+    failed=""
+    for r in {{ REMOTES }}; do
+        git remote get-url "$r" >/dev/null 2>&1 || { echo "↷ skipping $r (not configured)"; continue; }
+        git push "$r" --tags || failed="$failed $r"
+    done
+    [ -z "$failed" ] || { echo "⚠️  Failed:$failed"; exit 1; }
+
+# Latest commit + tags to every remote, after the gate (no bump)
+push-release-all: check-all push-all
+
+# Force-push the current branch to every remote (no lease — be sure!)
+push-all-force:
+    #!/usr/bin/env sh
+    failed=""
+    for r in {{ REMOTES }}; do
+        git remote get-url "$r" >/dev/null 2>&1 || { echo "↷ skipping $r (not configured)"; continue; }
+        git push --force "$r" "$(git branch --show-current)" || failed="$failed $r"
+    done
+    [ -z "$failed" ] || { echo "⚠️  Failed:$failed"; exit 1; }
+
+# Pull the current branch from GitHub
+pull:
+    git pull origin "$(git branch --show-current)"
+
+# Pull the current branch from Gitea Starscream
+pull-gitea-starscream:
+    git pull gitea-starscream "$(git branch --show-current)"
+
+# Pull the current branch from every remote (continues on failure)
+pull-all:
+    #!/usr/bin/env sh
+    failed=""
+    for r in {{ REMOTES }}; do
+        git remote get-url "$r" >/dev/null 2>&1 || { echo "↷ skipping $r (not configured)"; continue; }
+        git pull "$r" "$(git branch --show-current)" || failed="$failed $r"
+    done
+    [ -z "$failed" ] || { echo "⚠️  Failed:$failed"; exit 1; }
+
+# Force-sync Gitea Starscream with this checkout (branch + tags) — the nightlies diverge
+sync-gitea-starscream:
+    git push gitea-starscream "$(git branch --show-current)" --force
+    git push gitea-starscream --tags --force
 
 # Add the Gitea remote if it is missing
 setup-remotes:
