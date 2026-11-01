@@ -4,7 +4,7 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
-## [Unreleased]
+## [0.1.0](https://github.com/sorinirimies/zed-tokenburn/releases/tag/v0.1.0) — 2026-11-01
 
 ### ✨ Features
 
@@ -31,14 +31,18 @@ All notable changes to this project are documented here. It is generated from
 
 ### 🧪 Tests
 
+- Expect the platform separator in absolute_joins_the_extension_dir ([`f90d1c6`](https://github.com/sorinirimies/zed-tokenburn/commit/f90d1c6ae0724b4d4940ee90e03702b3ca0acd43))
 - Cargo-fuzz targets for settings, MCP messages, file URIs and charts ([`244a4e2`](https://github.com/sorinirimies/zed-tokenburn/commit/244a4e2e59a1cdff4b79fd3473a427daccccd1d2))
 
 ### 📦 Build
 
+- Nushell-only tooling from the create-rust-project template ([`855a77b`](https://github.com/sorinirimies/zed-tokenburn/commit/855a77b971d8b6a3a8813bd7cf909288908098e5))
 - **just:** Remote, release, dependency and nightly-on-demand recipes ([`1494db2`](https://github.com/sorinirimies/zed-tokenburn/commit/1494db28164fcaf10f8dfbfe3a9ab17ee6239017))
 
 ### 🔄 CI and release
 
+- **fuzz:** Fall back to an older nightly when the latest cannot build ([`6828870`](https://github.com/sorinirimies/zed-tokenburn/commit/682887045d1f83872f7bc591f51107e7795c8ffe))
+- Pin the MSRV toolchain via @master so Dependabot leaves it alone ([`617d372`](https://github.com/sorinirimies/zed-tokenburn/commit/617d37266448eae21af28dd541e66aa8346563ed))
 - Nightly dependency update on Gitea, keep both hosts in sync ([`1039e87`](https://github.com/sorinirimies/zed-tokenburn/commit/1039e872410d8dbffb80c1e1aa506523a426871a))
 - Check both extensions, build them the way Zed does ([`cb0ec61`](https://github.com/sorinirimies/zed-tokenburn/commit/cb0ec614890b4216762b1ff80fbd2930201d3bd3))
 - Nushell release scripts, quality gate, GitHub and Gitea workflows ([`71836f6`](https://github.com/sorinirimies/zed-tokenburn/commit/71836f67a2179798791c6a78b7619e485d922709))
