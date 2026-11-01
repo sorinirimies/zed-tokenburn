@@ -25,7 +25,8 @@ jobs:
           echo "$HOME/.cargo/bin" >> $GITHUB_PATH
       - name: Install cargo-fuzz
         run: cargo install cargo-fuzz --locked
-      - uses: hustcer/setup-nu@v3
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
       - name: Fuzz each target for 60s

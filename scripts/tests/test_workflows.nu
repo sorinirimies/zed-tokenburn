@@ -8,6 +8,7 @@
 use std/assert
 use runner.nu *
 use ../ci/deps_update.nu [LOCKFILES]
+use ../ci/quality_gate.nu [STEPS]
 
 def root [] { $env.CURRENT_FILE | path dirname | path join ".." ".." }
 
@@ -61,6 +62,25 @@ def "test workflows: the nightlies are scheduled on both hosts" [] {
 
 def "test workflows: deps updates cover the fuzz lockfile" [] {
     assert ("fuzz/Cargo.lock" in $LOCKFILES)
+}
+
+def "test workflows: both hosts run the same ci jobs" [] {
+    let jobs = {|host| open (root | path join $host "workflows" "ci.yml") | get jobs | columns | sort }
+    assert equal (do $jobs ".github") (do $jobs ".gitea")
+}
+
+# Every quality-gate step has a CI job on both hosts: nothing `just check-all`
+# checks is skipped in CI.
+def "test workflows: ci runs every quality gate step" [] {
+    let all = $STEPS | get id
+    for host in [".github" ".gitea"] {
+        let runs = open (root | path join $host "workflows" "ci.yml") | get jobs | values
+            | each {|j| $j.steps | get -o run | compact } | flatten
+        let covered = $runs | parse --regex 'quality_gate\.nu --only (?<ids>\S+)' | get ids
+            | each {|ids| $ids | split row "," } | flatten
+        assert equal ($all | where $it not-in $covered) [] $"($host) misses gate steps"
+        assert equal ($covered | where $it not-in $all) [] $"($host) names unknown steps"
+    }
 }
 
 def "test workflows: deps updates run the full gate before pushing" [] {

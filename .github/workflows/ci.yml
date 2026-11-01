@@ -12,24 +12,64 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# One job per quality-gate step (scripts/ci/quality_gate.nu --only …), so they
+# run in parallel and a failure names the check. `just check-all` runs the same
+# steps in one go; test_workflows.nu checks every step has a job on both hosts.
+
 jobs:
-  # fmt + clippy (native and wasm) + tests + wasm build + versions + nu tests —
-  # the same script `just check-all` runs.
-  gate:
-    name: quality gate
+  fmt:
+    name: fmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust stable + rustfmt
+        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt,clippy
-          targets: wasm32-wasip2
-      - uses: Swatinem/rust-cache@v2
-      - uses: hustcer/setup-nu@v3
+          components: rustfmt
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
-      - name: Quality gate
-        run: nu scripts/ci/quality_gate.nu
+      - name: Check formatting (workspace)
+        run: nu scripts/ci/quality_gate.nu --only fmt
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust stable + clippy + wasm32-wasip2
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          targets: wasm32-wasip2
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Run clippy (native and wasm32-wasip2)
+        run: nu scripts/ci/quality_gate.nu --only clippy,wasm-clippy
+
+  # Both extensions built exactly as Zed builds them when installing.
+  build:
+    name: build (extensions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust stable + wasm32-wasip2
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-wasip2
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Zed-style build of both extensions
+        run: nu scripts/ci/quality_gate.nu --only zed-build
 
   # The binary runs on all three systems: path handling, notifications and the
   # stdio servers differ there.
@@ -39,13 +79,49 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
       - name: cargo test --workspace
-        run: cargo test --workspace --all-features
+        run: nu scripts/ci/quality_gate.nu --only test
+
+  doc:
+    name: doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: cargo doc (warnings are errors)
+        run: nu scripts/ci/quality_gate.nu --only doc
+
+  test-nu:
+    name: test-nu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Versions agree and Nu script tests
+        run: nu scripts/ci/quality_gate.nu --only versions,nu
 
   # The Linux release binaries are static musl ones (any distro).
   musl:
@@ -57,16 +133,19 @@ jobs:
         run: |
           sudo apt-get -o Acquire::Retries=5 update -qq
           sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends musl-tools
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust stable + musl target
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
-      - name: Build
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: Build static binary
         run: cargo build --release -p tokenburn-zed --target x86_64-unknown-linux-musl
-      - uses: hustcer/setup-nu@v3
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
-      - name: Statically linked and runs
+      - name: Verify it is statically linked and runs
         run: nu scripts/ci/check_static.nu target/x86_64-unknown-linux-musl/release/tokenburn-zed
       - name: Reads the local logs
         run: target/x86_64-unknown-linux-musl/release/tokenburn-zed status
@@ -77,10 +156,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # @master + toolchain, not @1.90: Dependabot would bump a version ref.
-      - uses: dtolnay/rust-toolchain@master
+      - name: Install Rust 1.90 + wasm32-wasip2
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.90"
           targets: wasm32-wasip2
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --workspace --locked
-      - run: cargo check -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 --locked
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+      - name: cargo check (MSRV)
+        run: cargo check --workspace --locked
+      - name: cargo check extensions (MSRV, wasm32-wasip2)
+        run: cargo check -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 --locked

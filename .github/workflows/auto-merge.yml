@@ -35,7 +35,8 @@ jobs:
     steps:
       # The default branch's scripts, never the PR's.
       - uses: actions/checkout@v7
-      - uses: hustcer/setup-nu@v3
+      - name: Install Nushell
+        uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
       - name: Merge unless it is a major bump

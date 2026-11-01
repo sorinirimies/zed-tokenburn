@@ -10,6 +10,21 @@ use ../ci/check_static.nu [is_static]
 use ../ci/gitea_release.nu [release_payload]
 use ../ci/actions_update.nu [uses major_of bump PINNED]
 use ../ci/auto_merge.nu [parse_bump is_major decide]
+use ../ci/quality_gate.nu [select_steps STEPS]
+
+def "test quality_gate: runs every step by default in order" [] {
+    assert equal (select_steps "" []) ($STEPS | get id)
+}
+
+def "test quality_gate: only and skip pick steps" [] {
+    assert equal (select_steps "versions, fmt" []) ["fmt" "versions"] "gate order, not argument order"
+    assert equal (select_steps "" ["test" "nu"] | where $it in ["test" "nu"]) []
+    assert equal (select_steps "test" ["test"]) []
+}
+
+def "test quality_gate: unknown steps are an error" [] {
+    assert error { select_steps "fmt,lint" [] }
+}
 
 def "test deps_update: commit message is a dated chore deps" [] {
     assert equal (commit_message "2026-01-02") "chore(deps): nightly cargo update 2026-01-02"
