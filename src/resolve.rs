@@ -201,9 +201,12 @@ mod tests {
     #[test]
     fn absolute_joins_the_extension_dir() {
         let d = std::path::Path::new("/work/ext");
+        // In Zed this runs as wasm32-wasip2, where the separator is `/`; a native
+        // Windows test build joins with `\`.
+        let sep = std::path::MAIN_SEPARATOR;
         assert_eq!(
             absolute(Some(d), "tb-v1/tokenburn-zed"),
-            "/work/ext/tb-v1/tokenburn-zed"
+            format!("/work/ext{sep}tb-v1/tokenburn-zed")
         );
         assert_eq!(absolute(None, "tb-v1/tokenburn-zed"), "tb-v1/tokenburn-zed");
     }
