@@ -8,7 +8,7 @@
 # One version, three places that must agree (the release workflow checks it):
 #   * `workspace.package.version` in Cargo.toml (the extension crate and the
 #     `tokenburn-zed` binary inherit it)
-#   * `version` in extension.toml (what Zed's extension registry reads)
+#   * `version` in extension.toml and mcp/extension.toml (what Zed's registry reads)
 #   * Cargo.lock
 #
 # Order: validate (cheap) → quality gate on the untouched tree → edit, changelog,
@@ -92,7 +92,7 @@ export def set_extension_version [text: string, version: string]: nothing -> str
     ($out | str join "\n") + "\n"
 }
 
-const TOUCHED = ["Cargo.toml" "Cargo.lock" "extension.toml" "CHANGELOG.md"]
+const TOUCHED = ["Cargo.toml" "Cargo.lock" "extension.toml" "mcp/extension.toml" "CHANGELOG.md"]
 
 def run_checks [] {
     print $"(ansi cyan)── quality gate: nothing is bumped until it is green ──(ansi reset)"
@@ -154,10 +154,12 @@ def main [
 
     try {
         set_workspace_version (open Cargo.toml --raw) $new_version | save --force Cargo.toml
-        set_extension_version (open extension.toml --raw) $new_version | save --force extension.toml
-        print $"(ansi green)✓(ansi reset) Cargo.toml and extension.toml → ($new_version)"
+        for f in ["extension.toml" "mcp/extension.toml"] {
+            set_extension_version (open $f --raw) $new_version | save --force $f
+        }
+        print $"(ansi green)✓(ansi reset) Cargo.toml, extension.toml and mcp/extension.toml → ($new_version)"
 
-        ^cargo update -p zed-tokenburn -p tokenburn-zed
+        ^cargo update -p zed-tokenburn -p zed-tokenburn-mcp -p tokenburn-zed
         ^cargo metadata --locked --format-version 1 | ignore
         print $"(ansi green)✓(ansi reset) Cargo.lock updated."
 

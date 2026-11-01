@@ -6,7 +6,7 @@
 #   1. cargo fmt --check
 #   2. cargo clippy (workspace, native) and clippy of the extension for wasm32-wasip2
 #   3. cargo test --workspace
-#   4. the extension builds for wasm32-wasip2 (what Zed compiles)
+#   4. both extensions build for wasm32-wasip2, also exactly the way Zed builds them
 #   5. versions agree (Cargo.toml == extension.toml)
 #   6. nushell script tests
 #
@@ -38,11 +38,12 @@ def main [--skip-fmt, --skip-test, --skip-wasm, --skip-nu] {
     }) and $ok
     if not $skip_wasm {
         $ok = (run_step "cargo clippy --target wasm32-wasip2 (extension)" {
-            cargo clippy -p zed-tokenburn --target wasm32-wasip2 -- -D warnings
+            cargo clippy -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 -- -D warnings
         }) and $ok
         $ok = (run_step "cargo build --target wasm32-wasip2 --release (extension)" {
-            cargo build -p zed-tokenburn --target wasm32-wasip2 --release
+            cargo build -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 --release
         }) and $ok
+        $ok = (run_step "Zed-style build of both extensions" { nu scripts/ci/zed_build.nu }) and $ok
     }
     if not $skip_test {
         $ok = (run_step "cargo test --workspace" { cargo test --workspace --all-features }) and $ok

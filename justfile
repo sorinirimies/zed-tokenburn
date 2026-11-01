@@ -39,7 +39,7 @@ build:
 
 # Build the Zed extension to WebAssembly (what Zed does on install)
 build-ext:
-    cargo build -p zed-tokenburn --target wasm32-wasip2 --release
+    cargo build -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 --release
 
 # Release build of the native server
 build-release:
@@ -75,6 +75,8 @@ mcp:
 dev: install-server build-ext
     @echo "✅ Now in Zed: command palette → 'zed: install dev extension' → pick $(pwd)"
     @echo "   Open any file; the status bar shows 'TokenBurn: 🔥 …'."
+    @echo "   For the agent tools, install $(pwd)/mcp too and set"
+    @echo "   context_servers.tokenburn.settings.binary_path to $(command -v tokenburn-zed || echo ~/.cargo/bin/tokenburn-zed)"
 
 # ── Test & quality ────────────────────────────────────────────────────────────
 
@@ -95,7 +97,7 @@ fmt-check:
 # Clippy, native and for the extension's wasm target
 clippy:
     cargo clippy --workspace --all-targets --all-features -- -D warnings
-    cargo clippy -p zed-tokenburn --target wasm32-wasip2 -- -D warnings
+    cargo clippy -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 -- -D warnings
 
 # Everything CI runs (fmt check, clippy, wasm build, tests, versions, nu tests)
 check-all: fmt _check-nu
