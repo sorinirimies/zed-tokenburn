@@ -1,0 +1,62 @@
+# The repository root is two things at once:
+#
+# * the Zed extension itself (`zed-tokenburn`, compiled to `wasm32-wasip2` by Zed
+#   from this directory — Zed only reads `extension.toml` and this package), and
+# * the workspace root, so the native companion `tokenburn-zed` (language server +
+#   MCP server, reusing `tokenburn-core`) shares one lockfile and one version.
+#
+# `cargo build` here builds only the extension (`default-members`); use
+# `cargo build -p tokenburn-zed` (or `just build-server`) for the native binary.
+
+[package]
+name = "zed-tokenburn"
+description = "Zed extension: live AI token and cost usage in Zed's status bar (TokenBurn)"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+zed_extension_api = { workspace = true }
+serde_json = { workspace = true }
+
+[workspace]
+members = [".", "crates/tokenburn-zed"]
+default-members = ["."]
+resolver = "2"
+
+[workspace.package]
+version      = "0.1.0"
+edition      = "2021"
+rust-version = "1.90"
+authors      = ["Sorin Irimies <sorinirimies@gmail.com>"]
+license      = "MIT"
+repository   = "https://github.com/sorinirimies/zed-tokenburn"
+
+[workspace.dependencies]
+zed_extension_api = "0.7"
+# Pinned: 0.3.7 is the newest *fixed* release (zstd 0.14, RUSTSEC-2026-0391 & co.);
+# 0.3.8/0.3.9 were published earlier from an older branch and still use zstd 0.13.
+tokenburn-core    = "=0.3.7"
+anyhow            = "1"
+chrono            = "0.4"
+crossbeam-channel = "0.5"
+dirs              = "6.0"
+lsp-server        = "0.10"
+serde             = { version = "1", features = ["derive"] }
+serde_json        = "1"
+tempfile          = "3"
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = "symbols"
+panic         = "abort"

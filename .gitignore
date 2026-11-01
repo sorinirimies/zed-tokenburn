@@ -1,0 +1,8 @@
+/target/
+/dist/
+/RELEASE_NOTES.md
+*.wasm
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+.DS_Store
