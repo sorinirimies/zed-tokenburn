@@ -100,3 +100,19 @@ def "test workflows: justfile recipes run in nushell" [] {
 }
 
 def main [] { run-tests }
+
+def "test workflows: the msrv job pins the toolchain from Cargo.toml without a version ref" [] {
+    let cargo = open (root | path join Cargo.toml)
+    let msrv = $cargo | get -o workspace.package.rust-version | default ($cargo | get -o package.rust-version)
+    let step = open (root | path join .github workflows ci.yml) | get jobs.msrv.steps
+        | where {|s| ($s | get -o uses | default "") | str starts-with "dtolnay/rust-toolchain" } | first
+    # A version ref (@1.90) is something Dependabot bumps; @master + toolchain is not.
+    assert equal $step.uses "dtolnay/rust-toolchain@master"
+    assert equal ($step.with.toolchain | into string) $msrv
+}
+
+def "test workflows: rust toolchain refs are channels Dependabot leaves alone" [] {
+    let refs = ls (root | path join .github workflows) | get name | each {|f| open --raw $f | decode utf-8 }
+        | str join "\n" | parse --regex 'dtolnay/rust-toolchain@(?<ref>\S+)' | get ref | uniq
+    assert equal ($refs | where $it not-in [stable beta nightly master]) []
+}
