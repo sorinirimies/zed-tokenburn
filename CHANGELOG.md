@@ -8,34 +8,39 @@ All notable changes to this project are documented here. It is generated from
 
 ### ✨ Features
 
-- Open tokenburn's desktop and web dashboards from Zed ([`9298c49`](https://github.com/sorinirimies/zed-tokenburn/commit/9298c492fdc0f7564f506fd4497a138a1c4dd885))
-- Detect LSP or MCP from the first message when started without a mode ([`d934957`](https://github.com/sorinirimies/zed-tokenburn/commit/d934957543e052ac827dd321605516cf78470466))
+- Open tokenburn's desktop and web dashboards from Zed ([`fb3f3e5`](https://github.com/sorinirimies/zed-tokenburn/commit/fb3f3e5a4b9e6548b2d6bd31d76e3e8b8d7b27d8))
+- Detect LSP or MCP from the first message when started without a mode ([`a298cb3`](https://github.com/sorinirimies/zed-tokenburn/commit/a298cb3d49823aedf1e234c201c3d72661a92514))
 - Tokenburn-zed language server and MCP server on tokenburn-core ([`2b13f58`](https://github.com/sorinirimies/zed-tokenburn/commit/2b13f5844b6303350d929e98a9911bec86fe6ab1))
 
 ### 🧩 Zed integration
 
-- Move the MCP server into its own tokenburn-mcp-server extension ([`c1f47c2`](https://github.com/sorinirimies/zed-tokenburn/commit/c1f47c2375a90eda61edadf4fb9894f39433e8d1))
-- Reuse the language server's binary for the context server ([`8566edb`](https://github.com/sorinirimies/zed-tokenburn/commit/8566edb2032bc26a2731fcfc84a2d4408cae572e))
-- Offer the code actions on the first line by default ([`4489a77`](https://github.com/sorinirimies/zed-tokenburn/commit/4489a77d7893e5d03394b3b644018e77c7854af3))
+- Move the MCP server into its own tokenburn-mcp-server extension ([`2e4aff5`](https://github.com/sorinirimies/zed-tokenburn/commit/2e4aff5a8afffdd482bda4ff8328b5e7093715e0))
+- Reuse the language server's binary for the context server ([`cefdb34`](https://github.com/sorinirimies/zed-tokenburn/commit/cefdb3487fdc0181dd43e857e2f3caded26d7382))
+- Offer the code actions on the first line by default ([`24a0dd6`](https://github.com/sorinirimies/zed-tokenburn/commit/24a0dd6e6ae50b6a6e0a19a942e9a3cb257a5c1c))
 - Zed extension that downloads and starts tokenburn-zed ([`aea4dd9`](https://github.com/sorinirimies/zed-tokenburn/commit/aea4dd93c37b2de690aa51a824ad242483efce59))
 
 ### ♻️ Refactor
 
-- **ext:** Pure, unit-tested helpers for finding and downloading the binary ([`71ea43b`](https://github.com/sorinirimies/zed-tokenburn/commit/71ea43b09f565615e43c85e787d4c064bad1435b))
+- **ext:** Pure, unit-tested helpers for finding and downloading the binary ([`309ccf1`](https://github.com/sorinirimies/zed-tokenburn/commit/309ccf1b1dcf355bbbbba5eb79432b36b0e506fa))
 
 ### 📚 Documentation
 
-- Two extensions and the registry publishing guide ([`cb60ded`](https://github.com/sorinirimies/zed-tokenburn/commit/cb60dedf054f488d91fbe6f24710a23aaaf6efa3))
-- Dashboards, code-action placement and context-server setup ([`d681fbc`](https://github.com/sorinirimies/zed-tokenburn/commit/d681fbc58040e16cbc5d2271766b261d20e5a05f))
-- README ([`94fc7e4`](https://github.com/sorinirimies/zed-tokenburn/commit/94fc7e4cb59f76080c1624c00aba658181af99b6))
+- Two extensions and the registry publishing guide ([`b615b06`](https://github.com/sorinirimies/zed-tokenburn/commit/b615b06f219561e00c7056e57f531e8f10cfee60))
+- Dashboards, code-action placement and context-server setup ([`0e21fa6`](https://github.com/sorinirimies/zed-tokenburn/commit/0e21fa6736f3955ace778edc0aacafe5ebc5d53f))
+- README ([`8f63b01`](https://github.com/sorinirimies/zed-tokenburn/commit/8f63b01aadd3e59c190175b8435729caa9eec317))
 
 ### 🧪 Tests
 
 - Cargo-fuzz targets for settings, MCP messages, file URIs and charts ([`244a4e2`](https://github.com/sorinirimies/zed-tokenburn/commit/244a4e2e59a1cdff4b79fd3473a427daccccd1d2))
 
+### 📦 Build
+
+- **just:** Remote, release, dependency and nightly-on-demand recipes ([`1494db2`](https://github.com/sorinirimies/zed-tokenburn/commit/1494db28164fcaf10f8dfbfe3a9ab17ee6239017))
+
 ### 🔄 CI and release
 
-- Check both extensions, build them the way Zed does ([`b9a0caa`](https://github.com/sorinirimies/zed-tokenburn/commit/b9a0caa1cb31cd281314cbe367d01c7c837c0013))
+- Nightly dependency update on Gitea, keep both hosts in sync ([`1039e87`](https://github.com/sorinirimies/zed-tokenburn/commit/1039e872410d8dbffb80c1e1aa506523a426871a))
+- Check both extensions, build them the way Zed does ([`cb0ec61`](https://github.com/sorinirimies/zed-tokenburn/commit/cb0ec614890b4216762b1ff80fbd2930201d3bd3))
 - Nushell release scripts, quality gate, GitHub and Gitea workflows ([`71836f6`](https://github.com/sorinirimies/zed-tokenburn/commit/71836f67a2179798791c6a78b7619e485d922709))
 
 
