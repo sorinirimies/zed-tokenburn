@@ -7,7 +7,7 @@ use runner.nu *
 use ../remotes.nu [REMOTES targets git_args]
 use ../tools.nu [TOOLS TARGETS missing]
 use ../gitea_run.nu [dispatch_url]
-use ../ci/fuzz_all.nu [fuzz_args]
+use ../ci/fuzz_all.nu [fuzz_args toolchains FALLBACK_DAYS]
 
 def "test remotes: both hosts, github first" [] {
     assert equal ($REMOTES | columns) ["origin" "gitea-starscream"]
@@ -37,8 +37,15 @@ def "test gitea_run: dispatch url" [] {
     assert equal (dispatch_url "http://h" "ci.yml") (dispatch_url "http://h" "ci")
 }
 
-def "test fuzz_all: nightly with a time limit" [] {
-    assert equal (fuzz_args "parse" 30) [+nightly fuzz run parse -- -max_total_time=30]
+def "test fuzz_all: the chosen toolchain with a time limit" [] {
+    assert equal (fuzz_args nightly parse 30) [+nightly fuzz run parse -- -max_total_time=30]
+    assert equal (fuzz_args nightly-2026-10-25 parse 30) [+nightly-2026-10-25 fuzz run parse -- -max_total_time=30]
+}
+
+def "test fuzz_all: latest nightly first then dated fallbacks" [] {
+    let tcs = toolchains ("2026-11-01T12:00:00+00:00" | into datetime)
+    assert equal $tcs [nightly nightly-2026-10-25 nightly-2026-10-18]
+    assert equal ($tcs | length) (($FALLBACK_DAYS | length) + 1)
 }
 
 def main [] { run-tests }
