@@ -1,0 +1,164 @@
+name: Release
+
+# Push a vX.Y.Z tag (`just release X.Y.Z`): gate → build the `tokenburn-zed`
+# binary for every platform the extension downloads → GitHub release with the
+# archives → crates.io (if CRATES_IO_TOKEN is set).
+#
+# The Zed extension itself is published by a PR to zed-industries/extensions
+# (see README → Publishing); Zed builds the wasm from the tagged source.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - id: v
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
+          nu scripts/ci/check_versions.nu "$TAG"
+
+  gate:
+    name: Quality gate
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - run: nu scripts/ci/quality_gate.nu
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: [validate, gate]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-latest, target: aarch64-apple-darwin }
+          - { runner: macos-latest, target: x86_64-apple-darwin }
+          - { runner: ubuntu-latest, target: x86_64-unknown-linux-musl, zig: true }
+          - { runner: ubuntu-latest, target: aarch64-unknown-linux-musl, zig: true }
+          - { runner: windows-latest, target: x86_64-pc-windows-msvc }
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      # Static Linux binaries for both architectures from one runner: zig is the
+      # C cross-compiler for the bundled sqlite and zstd.
+      - name: Install zig
+        if: matrix.zig
+        uses: mlugg/setup-zig@v2
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+      - name: Build (zig)
+        if: matrix.zig
+        run: cargo zigbuild --release --locked -p tokenburn-zed --target ${{ matrix.target }}
+      - name: Build
+        if: ${{ !matrix.zig }}
+        run: cargo build --release --locked -p tokenburn-zed --target ${{ matrix.target }}
+      - name: Package
+        run: nu scripts/ci/package.nu ${{ matrix.target }} --out dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: tokenburn-zed-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: GitHub release
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+          fetch-depth: 0
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+      - name: Release notes
+        run: nu scripts/ci/release_notes.nu ${{ needs.validate.outputs.tag }}
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: TokenBurn for Zed ${{ needs.validate.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          files: dist/*
+
+  crates-io:
+    name: crates.io
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Publish tokenburn-zed (idempotent)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "CRATES_IO_TOKEN not set — skipping"; exit 0; fi
+          out=$(cargo publish -p tokenburn-zed --locked 2>&1) || {
+            echo "$out"
+            echo "$out" | grep -q "already exists" && exit 0
+            exit 1
+          }
+          echo "$out"

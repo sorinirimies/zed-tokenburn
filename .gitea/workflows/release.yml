@@ -1,0 +1,80 @@
+name: Release
+
+# Gitea runners are Linux only: this builds the two static Linux binaries and
+# publishes a Gitea release with them. The full set (macOS, Windows) comes from
+# the GitHub release, which is also what the Zed extension downloads.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v0.2.0)"
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTUP_MAX_RETRIES: "10"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref_name }}
+          fetch-depth: 0
+      - name: Install Rust stable + targets
+        run: |
+          for i in 1 2 3 4 5; do
+            curl --proto '=https' --tlsv1.2 -sSf --retry 5 --retry-all-errors --retry-delay 5 https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && break
+            [ $i = 5 ] && exit 1
+            echo "rustup install failed, retrying..."; sleep 15
+          done
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          . "$HOME/.cargo/env"
+          rustup component add rustfmt clippy
+          rustup target add wasm32-wasip2 x86_64-unknown-linux-musl aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Nushell, zig, cargo-zigbuild, git-cliff
+        run: |
+          V=0.116.1
+          curl -fsSL --retry 5 https://github.com/nushell/nushell/releases/download/$V/nu-$V-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /tmp
+          sudo install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu /usr/local/bin/nu || install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu $HOME/.cargo/bin/nu
+          python3 -m pip install --user --break-system-packages ziglang || python3 -m pip install --user ziglang
+          cargo install cargo-zigbuild git-cliff --locked
+      - name: Validate tag and versions
+        id: v
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
+          nu scripts/ci/check_versions.nu "$TAG"
+      - name: Quality gate
+        run: nu scripts/ci/quality_gate.nu
+      - name: Build and package
+        run: |
+          for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            cargo zigbuild --release --locked -p tokenburn-zed --target $t
+            nu scripts/ci/package.nu $t --out dist
+          done
+      - name: Release notes
+        run: nu scripts/ci/release_notes.nu ${{ steps.v.outputs.tag }}
+      - name: Create Gitea release
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          API="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
+          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+          BODY=$(nu -c 'open RELEASE_NOTES.md --raw | to json --raw')
+          RESPONSE=$(curl -s -X POST "$API/releases" \
+            -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"$TAG\",\"name\":\"TokenBurn for Zed $TAG\",\"body\":$BODY}")
+          ID=$(echo "$RESPONSE" | nu --stdin -c 'from json | get id' 2>/dev/null || true)
+          [ -n "$ID" ] || { echo "❌ $RESPONSE"; exit 1; }
+          for f in dist/*; do
+            curl -s -X POST "$API/releases/$ID/assets?name=$(basename "$f")" \
+              -H "Authorization: token $TOKEN" -H "Content-Type: application/octet-stream" \
+              --data-binary "@$f" > /dev/null
+            echo "📦 $(basename "$f")"
+          done

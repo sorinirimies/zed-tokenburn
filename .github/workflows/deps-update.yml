@@ -1,0 +1,51 @@
+name: Nightly dependency update
+
+# `cargo update` within the semver ranges (and in fuzz/), then the full gate; if
+# it is green, commit the lockfiles straight to main as `chore(deps)`. Nothing
+# changed ⇒ nothing happens. Releases stay manual (`just release X.Y.Z`).
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          token: ${{ secrets.GH_PAT || github.token }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: cargo update
+        run: |
+          cargo update
+          (cd fuzz && cargo update) || true
+      - name: Anything to do?
+        id: diff
+        run: |
+          if git diff --quiet -- Cargo.lock fuzz/Cargo.lock; then echo "changed=false" >> "$GITHUB_OUTPUT"; else echo "changed=true" >> "$GITHUB_OUTPUT"; fi
+      - name: Quality gate
+        if: steps.diff.outputs.changed == 'true'
+        run: nu scripts/ci/quality_gate.nu
+      - name: Commit
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock fuzz/Cargo.lock
+          git commit -m "chore(deps): nightly cargo update $(date -u +%Y-%m-%d)"
+          git push origin HEAD:main

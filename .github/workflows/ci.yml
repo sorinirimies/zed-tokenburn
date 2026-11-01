@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # fmt + clippy (native and wasm) + tests + wasm build + versions + nu tests —
+  # the same script `just check-all` runs.
+  gate:
+    name: quality gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      - name: Quality gate
+        run: nu scripts/ci/quality_gate.nu
+
+  # The binary runs on all three systems: path handling, notifications and the
+  # stdio servers differ there.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test --workspace
+        run: cargo test --workspace --all-features
+
+  # The Linux release binaries are static musl ones (any distro).
+  musl:
+    name: musl (static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install musl tools
+        run: |
+          sudo apt-get -o Acquire::Retries=5 update -qq
+          sudo apt-get -o Acquire::Retries=5 install -y --no-install-recommends musl-tools
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release -p tokenburn-zed --target x86_64-unknown-linux-musl
+      - name: Statically linked and runs
+        run: |
+          f=target/x86_64-unknown-linux-musl/release/tokenburn-zed
+          if ldd "$f" 2>&1 | grep -qv -e 'not a dynamic' -e 'statically linked'; then
+            echo "❌ $f is dynamically linked"; ldd "$f"; exit 1
+          fi
+          "$f" --version
+          "$f" status
+
+  msrv:
+    name: MSRV (1.90)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.90
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --locked
+      - run: cargo check -p zed-tokenburn --target wasm32-wasip2 --locked
