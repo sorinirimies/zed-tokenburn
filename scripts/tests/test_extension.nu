@@ -37,7 +37,7 @@ def "test extension: downloads only from this repository" [] {
 def "test extension: settings schema covers every documented key" [] {
     let schema = (open (root | path join "configuration" "settings_schema.json"))
     let keys = ($schema.properties | columns)
-    for k in ["enabled" "period" "tool" "refresh_secs" "include_cache" "show_cost" "show_rate" "show_hit" "show_saved" "currency" "budgets" "warn_pct" "notify" "desktop_notifications" "code_actions"] {
+    for k in ["enabled" "period" "tool" "refresh_secs" "include_cache" "show_cost" "show_rate" "show_hit" "show_saved" "currency" "budgets" "warn_pct" "notify" "desktop_notifications" "code_actions" "dashboard"] {
         assert ($k in $keys) $"schema has ($k)"
     }
     let config = (open --raw (root | path join "crates" "tokenburn-zed" "src" "config.rs"))

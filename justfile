@@ -59,6 +59,14 @@ status *args:
 report *args:
     cargo run -q -p tokenburn-zed -- report {{ args }}
 
+# Open tokenburn's desktop (gui) or web dashboard (e.g. just dashboard web --period month)
+dashboard kind="gui" *args:
+    cargo run -q -p tokenburn-zed -- dashboard {{ kind }} {{ args }}
+
+# Install tokenburn's desktop and web dashboards (what the dashboard code actions start)
+install-dashboards:
+    cargo install tokenburn-gui tokenburn-web --locked
+
 # Run the MCP server on stdin/stdout
 mcp:
     cargo run -q -p tokenburn-zed -- mcp

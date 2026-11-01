@@ -6,8 +6,9 @@
 //! * `tokenburn-zed lsp` (default) — a language server whose only job is the
 //!   status bar: it keeps one work-done progress open and Zed shows its message at
 //!   the bottom of the window (`TokenBurn: 🔥 1.20M ($5.10) [today] · …`). Budget
-//!   alerts become Zed notifications; code actions open the full report, cycle the
-//!   period and pause.
+//!   alerts become Zed notifications; code actions open the full report, start
+//!   tokenburn's desktop (`tokenburn-gui`) or web (`tokenburn-web`) dashboard,
+//!   cycle the period and pause.
 //! * `tokenburn-zed mcp` — an MCP server (the extension's context server) with
 //!   read-only tools for Zed's agent: usage, report, chart, breakdown, budgets.
 //! * `tokenburn-zed status|report` — the same numbers on the terminal.
@@ -19,6 +20,7 @@
 pub mod budget;
 pub mod chart;
 pub mod config;
+pub mod dashboard;
 pub mod engine;
 pub mod fmt;
 pub mod lsp;
