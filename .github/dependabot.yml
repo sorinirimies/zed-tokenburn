@@ -20,7 +20,11 @@ updates:
     open-pull-requests-limit: 5
 
   - package-ecosystem: cargo
-    directories: ["/", "/fuzz"]
+    # Root only. The fuzz crate inherits the workspace's dependencies through
+    # its path dependency, so a "/fuzz" entry opens a duplicate PR per bump that
+    # only updates fuzz/Cargo.lock (and fails `--locked`). The nightly deps
+    # update refreshes fuzz/Cargo.lock.
+    directory: /
     schedule:
       interval: weekly
       day: monday

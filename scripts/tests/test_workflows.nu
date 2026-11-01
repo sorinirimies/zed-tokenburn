@@ -39,7 +39,10 @@ def "test workflows: gitea bumps its actions nightly" [] {
 def "test workflows: dependabot covers cargo but never the pinned crates" [] {
     let updates = open (root | path join ".github" "dependabot.yml") | get updates
     assert equal ($updates | get package-ecosystem | sort) ["cargo" "github-actions"]
-    let ignored = $updates | where package-ecosystem == "cargo" | first | get ignore | get dependency-name
+    let cargo = $updates | where package-ecosystem == "cargo" | first
+    assert equal $cargo.directory? "/" "root only: /fuzz gives duplicate, half-updated PRs"
+    assert equal $cargo.directories? null
+    let ignored = $cargo.ignore | get dependency-name
     assert ("tokenburn-core" in $ignored) "tokenburn-core stays pinned (zstd)"
     assert ("zed_extension_api" in $ignored) "zed_extension_api bumps are releases"
 }
