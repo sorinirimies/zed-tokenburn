@@ -39,7 +39,7 @@ def on_all [op: string, --force] {
     for r in ($REMOTES | columns | where {|r| $r not-in $configured }) { print $"↷ skipping ($r) \(not configured\)" }
     let failed = targets $configured | where {|r|
         print $"(ansi cyan)▶(ansi reset) git (git_args $op $r $branch --force=$force | str join ' ')"
-        (do { ^git ...(git_args $op $r $branch --force=$force) } | complete | get exit_code) != 0
+        try { ^git ...(git_args $op $r $branch --force=$force); false } catch { true }
     }
     if ($failed | is-not-empty) {
         print $"⚠️  failed: ($failed | str join ', ')"
