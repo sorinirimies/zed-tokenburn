@@ -1,7 +1,7 @@
-# Dependabot — keep GitHub Actions up to date
-# Cargo dependency upgrades are handled by the Nightly Dependency Upgrade
-# workflow (`.gitea/workflows/nightly-deps.yml`), so only the github-actions
-# ecosystem is configured here.
+# Dependabot — GitHub Actions and Cargo dependencies.
+# In-range Cargo updates also land nightly via deps-update.yml (`cargo update` +
+# full gate); Dependabot adds the bumps outside the version ranges. Green PRs are
+# merged by auto-merge.yml, except majors (1.x → 2.x).
 
 version: 2
 updates:
@@ -18,3 +18,26 @@ updates:
     commit-message:
       prefix: "ci(deps):"
     open-pull-requests-limit: 5
+
+  - package-ecosystem: cargo
+    directories: ["/", "/fuzz"]
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    labels:
+      - dependencies
+      - rust
+    commit-message:
+      prefix: "chore(deps):"
+    open-pull-requests-limit: 5
+    # One PR for all minor/patch bumps; each major gets its own (for a human).
+    groups:
+      cargo:
+        update-types: [minor, patch]
+    ignore:
+      # Pinned on purpose: newer releases pull in a vulnerable zstd.
+      - dependency-name: tokenburn-core
+      # A bump raises the minimum Zed version users need: a deliberate release.
+      - dependency-name: zed_extension_api

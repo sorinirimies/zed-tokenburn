@@ -9,6 +9,7 @@ use ../ci/publish_crate.nu [already_published]
 use ../ci/check_static.nu [is_static]
 use ../ci/gitea_release.nu [release_payload]
 use ../ci/actions_update.nu [uses major_of bump PINNED]
+use ../ci/auto_merge.nu [parse_bump is_major decide]
 
 def "test deps_update: commit message is a dated chore deps" [] {
     assert equal (commit_message "2026-01-02") "chore(deps): nightly cargo update 2026-01-02"
@@ -65,6 +66,36 @@ def "test actions_update: pinned actions never move" [] {
 def "test actions_update: v1 does not touch v10" [] {
     let out = bump "- uses: a/b@v1\n- uses: a/b@v10\n" { "a/b": 2 }
     assert equal $out "- uses: a/b@v2\n- uses: a/b@v10\n"
+}
+
+def pr [title: string, --author: string = "app/dependabot", --state: string = "OPEN", --sha: string = "abc"] {
+    {author: {login: $author}, state: $state, headRefOid: $sha, title: $title, number: 7}
+}
+
+def "test auto_merge: parses single bumps and not groups" [] {
+    assert equal (parse_bump "ci(deps): bump dependabot/fetch-metadata from 2 to 3") {from: "2", to: "3"}
+    assert equal (parse_bump "chore(deps): bump serde from 1.0.210 to v1.0.211") {from: "1.0.210", to: "1.0.211"}
+    assert equal (parse_bump "chore(deps): bump the cargo group across 2 directories with 4 updates") null
+}
+
+def "test auto_merge: only a changed first component is major" [] {
+    assert (is_major "2" "3")
+    assert (is_major "1.9.0" "2.0.0")
+    assert not (is_major "1.0.1" "1.4.0")
+    assert not (is_major "0.3.7" "0.4.0")
+}
+
+def "test auto_merge: merges green minors and groups" [] {
+    assert (decide (pr "bump x from 1.2.0 to 1.3.0") "abc").merge
+    assert (decide (pr "bump x from 0.3.0 to 0.4.0") "abc").merge
+    assert (decide (pr "bump the cargo group with 3 updates") "abc").merge
+}
+
+def "test auto_merge: leaves majors and anything unexpected alone" [] {
+    assert not (decide (pr "bump x from 1.2.0 to 2.0.0") "abc").merge
+    assert not (decide (pr "bump x from 1.2.0 to 1.3.0" --author "sorinirimies") "abc").merge
+    assert not (decide (pr "bump x from 1.2.0 to 1.3.0" --state "MERGED") "abc").merge
+    assert not (decide (pr "bump x from 1.2.0 to 1.3.0" --sha "new") "abc").merge "branch moved after CI"
 }
 
 def main [] { run-tests }

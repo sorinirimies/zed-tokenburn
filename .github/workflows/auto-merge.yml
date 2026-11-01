@@ -1,22 +1,24 @@
 # ──────────────────────────────────────────────────────────────────────────────
-# Auto-merge — automatically approve and merge Dependabot PRs
+# Auto-merge — merge Dependabot PRs once CI is green
 # ──────────────────────────────────────────────────────────────────────────────
-# Dependabot is configured for GitHub Actions only (see .github/dependabot.yml).
-# Cargo dependency upgrades are handled by the Nightly Dependency Upgrade
-# workflow on Gitea.
+# Dependabot bumps GitHub Actions and Cargo dependencies (.github/dependabot.yml);
+# in-range Cargo updates also land nightly via deps-update.yml.
 #
-# If CI passes, patch and minor Action bumps are approved and merged
-# automatically so they don't pile up.  Major bumps require manual review.
+# Runs after CI finished successfully on a Dependabot PR, so no branch
+# protection or "Allow auto-merge" setting is needed — and direct pushes to main
+# (yours, the nightly) stay unblocked. scripts/ci/auto_merge.nu leaves majors
+# (1.x → 2.x) for a human and squash-merges everything else.
 #
-# Requirements:
-#   • The repo must have "Allow auto-merge" enabled in Settings → General.
-#   • Branch protection rules must require status checks to pass before merging.
+# Merges made with GITHUB_TOKEN don't trigger new workflow runs; the PR's CI
+# already ran on the rebased branch.
 # ──────────────────────────────────────────────────────────────────────────────
 
 name: Auto-merge Dependabot
 
 on:
-  pull_request:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
 
 permissions:
   contents: write
@@ -26,26 +28,19 @@ jobs:
   auto-merge:
     name: Auto-merge
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]'
     steps:
-      - name: Fetch Dependabot metadata
-        id: metadata
-        uses: dependabot/fetch-metadata@v3
+      # The default branch's scripts, never the PR's.
+      - uses: actions/checkout@v7
+      - uses: hustcer/setup-nu@v3
         with:
-          github-token: "${{ secrets.GITHUB_TOKEN }}"
-
-      # Only auto-merge patch and minor updates.
-      # Major version bumps require manual review.
-      - name: Approve PR
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr review --approve "$PR_URL"
+          version: "0.116.1"
+      - name: Merge unless it is a major bump
+        run: nu scripts/ci/auto_merge.nu "$BRANCH" "$SHA"
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Enable auto-merge (squash)
-        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
-        run: gh pr merge --auto --squash "$PR_URL"
-        env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          GH_TOKEN: ${{ github.token }}

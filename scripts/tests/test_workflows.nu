@@ -35,6 +35,23 @@ def "test workflows: gitea bumps its actions nightly" [] {
     assert (root | path join ".github" "dependabot.yml" | path exists) "GitHub uses Dependabot"
 }
 
+def "test workflows: dependabot covers cargo but never the pinned crates" [] {
+    let updates = open (root | path join ".github" "dependabot.yml") | get updates
+    assert equal ($updates | get package-ecosystem | sort) ["cargo" "github-actions"]
+    let ignored = $updates | where package-ecosystem == "cargo" | first | get ignore | get dependency-name
+    assert ("tokenburn-core" in $ignored) "tokenburn-core stays pinned (zstd)"
+    assert ("zed_extension_api" in $ignored) "zed_extension_api bumps are releases"
+}
+
+def "test workflows: auto-merge waits for a green CI run" [] {
+    let wf = open (root | path join ".github" "workflows" "auto-merge.yml")
+    assert equal $wf.on.workflow_run.workflows ["CI"]
+    let job = $wf.jobs.auto-merge
+    assert ($job.if | str contains "conclusion == 'success'")
+    assert ($job.if | str contains "dependabot[bot]")
+    assert ($job.steps | any {|s| ($s.run? | default "") | str starts-with "nu scripts/ci/auto_merge.nu" })
+}
+
 def "test workflows: the nightlies are scheduled on both hosts" [] {
     for n in $NIGHTLIES {
         assert equal (cron ".github" $n.file) [$n.github] $"GitHub ($n.file)"
