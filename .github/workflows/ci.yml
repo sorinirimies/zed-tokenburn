@@ -63,14 +63,13 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Build
         run: cargo build --release -p tokenburn-zed --target x86_64-unknown-linux-musl
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
       - name: Statically linked and runs
-        run: |
-          f=target/x86_64-unknown-linux-musl/release/tokenburn-zed
-          if ldd "$f" 2>&1 | grep -qv -e 'not a dynamic' -e 'statically linked'; then
-            echo "❌ $f is dynamically linked"; ldd "$f"; exit 1
-          fi
-          "$f" --version
-          "$f" status
+        run: nu scripts/ci/check_static.nu target/x86_64-unknown-linux-musl/release/tokenburn-zed
+      - name: Reads the local logs
+        run: target/x86_64-unknown-linux-musl/release/tokenburn-zed status
 
   msrv:
     name: MSRV (1.90)

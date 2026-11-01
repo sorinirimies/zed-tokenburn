@@ -2,13 +2,16 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # TokenBurn for Zed — Quality gate
 # ──────────────────────────────────────────────────────────────────────────────
-# The same sequence locally (`just check-all`), in CI and before a bump:
+# The same sequence locally (`just check-all`), in CI, in the nightly dependency
+# update and before a bump:
 #   1. cargo fmt --check
-#   2. cargo clippy (workspace, native) and clippy of the extension for wasm32-wasip2
+#   2. cargo clippy (workspace, all targets, -D warnings)
 #   3. cargo test --workspace
-#   4. both extensions build for wasm32-wasip2, also exactly the way Zed builds them
-#   5. versions agree (Cargo.toml == extension.toml)
+#   4. cargo doc with warnings as errors (broken intra-doc links fail docs.rs)
+#   5. versions agree (Cargo.toml == EXTRA_MANIFESTS)
 #   6. nushell script tests
+# Project-specific: clippy for wasm32-wasip2 and the Zed-style build of both
+# extensions (scripts/ci/zed_build.nu). One place, so every caller gets them.
 #
 # Usage: nu scripts/ci/quality_gate.nu [--skip-fmt] [--skip-test] [--skip-wasm] [--skip-nu]
 # ──────────────────────────────────────────────────────────────────────────────
@@ -37,17 +40,17 @@ def main [--skip-fmt, --skip-test, --skip-wasm, --skip-nu] {
         cargo clippy --workspace --all-targets --all-features -- -D warnings
     }) and $ok
     if not $skip_wasm {
-        $ok = (run_step "cargo clippy --target wasm32-wasip2 (extension)" {
+        $ok = (run_step "cargo clippy --target wasm32-wasip2 (extensions)" {
             cargo clippy -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 -- -D warnings
-        }) and $ok
-        $ok = (run_step "cargo build --target wasm32-wasip2 --release (extension)" {
-            cargo build -p zed-tokenburn -p zed-tokenburn-mcp --target wasm32-wasip2 --release
         }) and $ok
         $ok = (run_step "Zed-style build of both extensions" { nu scripts/ci/zed_build.nu }) and $ok
     }
     if not $skip_test {
         $ok = (run_step "cargo test --workspace" { cargo test --workspace --all-features }) and $ok
     }
+    $ok = (run_step "cargo doc (warnings are errors)" {
+        with-env { RUSTDOCFLAGS: "-D warnings" } { cargo doc --no-deps --workspace --quiet }
+    }) and $ok
     $ok = (run_step "versions agree" { nu scripts/ci/check_versions.nu }) and $ok
     if not $skip_nu {
         $ok = (run_step "nushell tests" { nu scripts/tests/run_all.nu }) and $ok

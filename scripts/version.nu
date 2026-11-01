@@ -2,4 +2,8 @@
 # Prints the current workspace version from Cargo.toml.
 # Usage: nu scripts/version.nu
 
-open Cargo.toml | get workspace.package.version | print
+export def read_version [] {
+    open Cargo.toml | get workspace.package.version
+}
+
+def main [] { print (read_version) }

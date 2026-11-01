@@ -1,11 +1,12 @@
 name: Release
 
-# Push a vX.Y.Z tag (`just release X.Y.Z`): gate → build the `tokenburn-zed`
-# binary for every platform the extension downloads → GitHub release with the
-# archives → crates.io (if CRATES_IO_TOKEN is set).
+# Push a vX.Y.Z tag (`just release X.Y.Z`): validate tag == Cargo.toml → gate →
+# build `tokenburn-zed` for macOS (arm64, x86-64), Linux (static musl arm64, x86-64)
+# and Windows → GitHub release with the archives + sha256 and git-cliff notes →
+# crates.io (only if the CRATES_IO_TOKEN secret is set; idempotent).
 #
-# The Zed extension itself is published by a PR to zed-industries/extensions
-# (see README → Publishing); Zed builds the wasm from the tagged source.
+# The Zed extensions themselves are published by a PR to zed-industries/extensions
+# (docs/publishing.md); Zed builds the wasm from the tagged source.
 
 on:
   push:
@@ -40,11 +41,11 @@ jobs:
       - uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
-      - id: v
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
-          nu scripts/ci/check_versions.nu "$TAG"
+      - name: Validate tag
+        id: v
+        run: nu scripts/ci/validate_tag.nu "${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Versions match the tag
+        run: nu scripts/ci/check_versions.nu "${{ steps.v.outputs.tag }}"
 
   gate:
     name: Quality gate
@@ -151,14 +152,11 @@ jobs:
         with:
           ref: ${{ needs.validate.outputs.tag }}
       - uses: dtolnay/rust-toolchain@stable
+      - uses: hustcer/setup-nu@v3
+        with:
+          version: "0.116.1"
+      # Multi-crate workspace: one line per crate, dependencies first.
       - name: Publish tokenburn-zed (idempotent)
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
-        run: |
-          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then echo "CRATES_IO_TOKEN not set — skipping"; exit 0; fi
-          out=$(cargo publish -p tokenburn-zed --locked 2>&1) || {
-            echo "$out"
-            echo "$out" | grep -q "already exists" && exit 0
-            exit 1
-          }
-          echo "$out"
+        run: nu scripts/ci/publish_crate.nu tokenburn-zed

@@ -45,36 +45,18 @@ jobs:
           sudo install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu /usr/local/bin/nu || install -m 0755 /tmp/nu-$V-x86_64-unknown-linux-gnu/nu $HOME/.cargo/bin/nu
           python3 -m pip install --user --break-system-packages ziglang || python3 -m pip install --user ziglang
           cargo install cargo-zigbuild git-cliff --locked
-      - name: Validate tag and versions
+      - name: Validate tag
         id: v
-        run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          nu scripts/ci/validate_tag.nu "$TAG" >> "$GITHUB_OUTPUT"
-          nu scripts/ci/check_versions.nu "$TAG"
+        run: nu scripts/ci/validate_tag.nu "${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+      - name: Versions match the tag
+        run: nu scripts/ci/check_versions.nu "${{ steps.v.outputs.tag }}"
       - name: Quality gate
         run: nu scripts/ci/quality_gate.nu
       - name: Build and package
-        run: |
-          for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
-            cargo zigbuild --release --locked -p tokenburn-zed --target $t
-            nu scripts/ci/package.nu $t --out dist
-          done
+        run: nu -c 'for t in [x86_64-unknown-linux-musl aarch64-unknown-linux-musl] { cargo zigbuild --release --locked -p tokenburn-zed --target $t; nu scripts/ci/package.nu $t --out dist }'
       - name: Release notes
         run: nu scripts/ci/release_notes.nu ${{ steps.v.outputs.tag }}
       - name: Create Gitea release
-        run: |
-          TAG="${{ steps.v.outputs.tag }}"
-          API="${{ github.server_url }}/api/v1/repos/${{ github.repository }}"
-          TOKEN="${{ secrets.GITHUB_TOKEN }}"
-          BODY=$(nu -c 'open RELEASE_NOTES.md --raw | to json --raw')
-          RESPONSE=$(curl -s -X POST "$API/releases" \
-            -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
-            -d "{\"tag_name\":\"$TAG\",\"name\":\"TokenBurn for Zed $TAG\",\"body\":$BODY}")
-          ID=$(echo "$RESPONSE" | nu --stdin -c 'from json | get id' 2>/dev/null || true)
-          [ -n "$ID" ] || { echo "❌ $RESPONSE"; exit 1; }
-          for f in dist/*; do
-            curl -s -X POST "$API/releases/$ID/assets?name=$(basename "$f")" \
-              -H "Authorization: token $TOKEN" -H "Content-Type: application/octet-stream" \
-              --data-binary "@$f" > /dev/null
-            echo "📦 $(basename "$f")"
-          done
+        env:
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: nu scripts/ci/gitea_release.nu ${{ steps.v.outputs.tag }} --api "${{ github.server_url }}/api/v1/repos/${{ github.repository }}" --dir dist

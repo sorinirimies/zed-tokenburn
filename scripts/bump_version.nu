@@ -5,10 +5,10 @@
 # Usage:
 #   nu scripts/bump_version.nu <new_version> [--yes] [--skip-checks] [--check]
 #
-# One version, three places that must agree (the release workflow checks it):
-#   * `workspace.package.version` in Cargo.toml (the extension crate and the
-#     `tokenburn-zed` binary inherit it)
-#   * `version` in extension.toml and mcp/extension.toml (what Zed's registry reads)
+# One version, everywhere (the release workflow checks it):
+#   * `workspace.package.version` in Cargo.toml (every crate inherits it)
+#   * the top-level `version` of each file in check_versions.nu's EXTRA_MANIFESTS
+#     (e.g. a Zed extension.toml, a package.json)
 #   * Cargo.lock
 #
 # Order: validate (cheap) → quality gate on the untouched tree → edit, changelog,
@@ -77,7 +77,7 @@ export def set_workspace_version [text: string, version: string]: nothing -> str
     ($out | str join "\n") + "\n"
 }
 
-# Set the top-level `version` of an extension.toml text.
+# Set the first top-level `version = "…"` of a TOML text (extension.toml & co).
 export def set_extension_version [text: string, version: string]: nothing -> string {
     mut done = false
     mut out = []
@@ -92,7 +92,9 @@ export def set_extension_version [text: string, version: string]: nothing -> str
     ($out | str join "\n") + "\n"
 }
 
-const TOUCHED = ["Cargo.toml" "Cargo.lock" "extension.toml" "mcp/extension.toml" "CHANGELOG.md"]
+use ci/check_versions.nu [EXTRA_MANIFESTS]
+
+const TOUCHED = ["Cargo.toml" "Cargo.lock" "fuzz/Cargo.lock" "CHANGELOG.md"]
 
 def run_checks [] {
     print $"(ansi cyan)── quality gate: nothing is bumped until it is green ──(ansi reset)"
@@ -136,6 +138,12 @@ def main [
         print $"(ansi red)Error:(ansi reset) tag ($tag) already exists."
         exit 1
     }
+    # A tag someone else pushed would make our push fail after the commit.
+    let remote = do { ^git ls-remote --tags origin $"refs/tags/($tag)" } | complete
+    if $remote.exit_code == 0 and ($remote.stdout | str trim | is-not-empty) {
+        print $"(ansi red)Error:(ansi reset) tag ($tag) already exists on origin."
+        exit 1
+    }
     if (^git status --porcelain | str trim | is-not-empty) {
         print $"(ansi red)Error:(ansi reset) the working tree is dirty — commit or stash first."
         exit 1
@@ -154,13 +162,18 @@ def main [
 
     try {
         set_workspace_version (open Cargo.toml --raw) $new_version | save --force Cargo.toml
-        for f in ["extension.toml" "mcp/extension.toml"] {
+        for f in $EXTRA_MANIFESTS {
             set_extension_version (open $f --raw) $new_version | save --force $f
         }
-        print $"(ansi green)✓(ansi reset) Cargo.toml, extension.toml and mcp/extension.toml → ($new_version)"
+        print $"(ansi green)✓(ansi reset) Cargo.toml ($EXTRA_MANIFESTS | str join ' ') → ($new_version)"
 
-        ^cargo update -p zed-tokenburn -p zed-tokenburn-mcp -p tokenburn-zed
+        ^cargo update --workspace
         ^cargo metadata --locked --format-version 1 | ignore
+        # fuzz/ is its own workspace and records our crate's version too; resolving
+        # it refreshes the path dependency without upgrading anything else.
+        if ("fuzz/Cargo.toml" | path exists) {
+            do { cd fuzz; ^cargo metadata --format-version 1 | ignore }
+        }
         print $"(ansi green)✓(ansi reset) Cargo.lock updated."
 
         if (which git-cliff | is-not-empty) {
@@ -170,7 +183,7 @@ def main [
             print $"(ansi yellow)⚠(ansi reset) git-cliff not found — CHANGELOG.md unchanged."
         }
 
-        ^git add ...$TOUCHED
+        ^git add ...($TOUCHED | where {|f| $f | path exists }) ...$EXTRA_MANIFESTS
         ^git commit -m $"chore: bump version to ($new_version)"
         ^git tag -a $tag -m $"Release ($tag)"
         print $"(ansi green)✓(ansi reset) Committed and tagged ($tag)."

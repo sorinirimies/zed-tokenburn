@@ -2,24 +2,23 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # TokenBurn for Zed — Versions agree
 # ──────────────────────────────────────────────────────────────────────────────
-# The workspace version (Cargo.toml), the versions of both extensions
-# (extension.toml, mcp/extension.toml) and, for a release, the tag must all be the
-# same — Zed's registry reads extension.toml, the downloaded binary comes from the
-# tag's release.
+# The workspace version (Cargo.toml), the top-level `version` of every file in
+# EXTRA_MANIFESTS and, for a release, the tag must all be the same.
 #
 # Usage:
-#   nu scripts/ci/check_versions.nu            # Cargo.toml == both extension.toml
+#   nu scripts/ci/check_versions.nu            # Cargo.toml == EXTRA_MANIFESTS
 #   nu scripts/ci/check_versions.nu v0.2.0     # … and == the tag
 # ──────────────────────────────────────────────────────────────────────────────
 
-# The extension manifests whose version must follow Cargo.toml.
-export const MANIFESTS = ["extension.toml" "mcp/extension.toml"]
+# Other manifests whose `version` must follow Cargo.toml (bump_version.nu edits
+# them too), e.g. ["extension.toml"] for a Zed extension. Single source of truth.
+export const EXTRA_MANIFESTS = ["extension.toml" "mcp/extension.toml"]
 
-# The mismatches between the versions (empty = all agree). `extensions` maps a
+# The mismatches between the versions (empty = all agree). `manifests` maps a
 # manifest path to its version.
-export def mismatches [cargo: string, extensions: record, tag?: string]: nothing -> list<string> {
+export def mismatches [cargo: string, manifests: record, tag?: string]: nothing -> list<string> {
     mut out = []
-    for e in ($extensions | transpose file version) {
+    for e in ($manifests | transpose file version) {
         if $cargo != $e.version {
             $out = ($out | append $"Cargo.toml has ($cargo) but ($e.file) has ($e.version)")
         }
@@ -35,9 +34,8 @@ export def mismatches [cargo: string, extensions: record, tag?: string]: nothing
 
 def main [tag?: string] {
     let cargo = (open Cargo.toml | get workspace.package.version)
-    let exts = ($MANIFESTS | each {|f| {file: $f, version: (open $f | get version)} }
-        | transpose --header-row --as-record)
-    let bad = (mismatches $cargo $exts $tag)
+    let manifests = ($EXTRA_MANIFESTS | reduce --fold {} {|f, acc| $acc | insert $f (open $f | get version) })
+    let bad = (mismatches $cargo $manifests $tag)
     if ($bad | is-not-empty) {
         for b in $bad { print --stderr $"(ansi red)❌ ($b)(ansi reset)" }
         exit 1
