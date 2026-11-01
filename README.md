@@ -32,6 +32,7 @@ Amp, Cline, Roo Code, Kilo Code and Qwen Code** through
 | **Status bar** | `🔥 tokens (cost) [period] · burn rate · cache hit · ~saved`, refreshed every 10 s, only re-parsing files that changed. Turns into `🔥 ⚠ …` near a budget and `🔥 OVER BUDGET …` past it |
 | **Periods** | last hour, today, this week (Monday start), month, year, all time — set it in the settings or cycle it with a code action |
 | **Budgets & limits** | daily / weekly / monthly **token** budgets (Zed settings) and **dollar** limits (shared with every TokenBurn front-end), each alerting once per period as a Zed notification, with a linear forecast ("at this pace it runs out Thu 14:05") |
+| **Dashboards** | code actions open tokenburn's own **Rust dashboards** on the status bar's view — the native Iced desktop app (`tokenburn-gui`) or the live web dashboard (`tokenburn-web`, opened in your browser): interactive animated charts, click-to-drill-down, 43 themes, limits and savings panels |
 | **Report** | a code action opens a markdown report in a tab: usage for every period, budgets, daily / weekly / monthly charts, usage by tool and by project, savings by source |
 | **Savings** | prompt cache, [rtk](https://github.com/rtk-ai/rtk) and pi compaction, valued at your input price |
 | **Agent tools (MCP)** | Zed's agent can answer "what did I spend this week?" itself: `tokenburn_usage`, `tokenburn_report`, `tokenburn_chart`, `tokenburn_breakdown`, `tokenburn_budgets` |
@@ -59,7 +60,8 @@ progress. So the extension is two pieces:
   `TokenBurn` and updates its message; alerts are `window/showMessage`; the code
   actions are `workspace/executeCommand`.
 * The **context server** is a small MCP server on stdio.
-* Both are the same binary, `tokenburn-zed` (`lsp` / `mcp` / `status` / `report`).
+* Both are the same binary, `tokenburn-zed` (`lsp` / `mcp` / `status` / `report`;
+  without a mode it detects LSP or MCP from the first message).
 
 > The status bar shows the activity spinner next to the text (it is a "progress" to
 > Zed), and when another language server is busy Zed shows the most recent work
@@ -71,7 +73,8 @@ progress. So the extension is two pieces:
 2. Open any file. The extension downloads `tokenburn-zed` for your platform from the
    [latest release](https://github.com/sorinirimies/zed-tokenburn/releases) (macOS
    arm64/x86-64, Linux arm64/x86-64 static, Windows x86-64) and the status bar shows
-   `TokenBurn: 🔥 …`.
+   `TokenBurn: 🔥 …`. (Zed starts language servers only in projects you trust; it asks
+   once per project.)
 
 Prefer your own build? Put it on `PATH` and the extension uses it instead:
 
@@ -88,21 +91,48 @@ just dev    # installs tokenburn-zed, builds the wasm
 
 ## Use
 
-**Code actions** (`cmd-.` / `ctrl-.`, in any file):
+**Code actions** — put the cursor on **line 1** of any file and press `cmd-.` / `ctrl-.`:
 
 | Action | |
 |---|---|
 | 🔥 TokenBurn: open usage report | writes `~/Library/Caches/tokenburn/zed-report.md` (`~/.cache/…` on Linux) and opens it |
+| 🔥 TokenBurn: open the desktop dashboard | starts `tokenburn-gui` (shown when it is installed) |
+| 🔥 TokenBurn: open the web dashboard | starts `tokenburn-web` on `127.0.0.1:3000` (or reuses a running one) and opens it in the browser; stopped again when Zed stops the server |
 | 🔥 TokenBurn: status bar → week (now today) | cycles today → week → month → year → all → hour |
 | 🔥 TokenBurn: pause / resume the status bar | paused = nothing read in the background |
 
-Cycling and pausing last until Zed restarts the server or the settings change; put
-permanent choices in the settings. Turn the actions off with `"code_actions": false`.
+They are offered on the first line only because Zed puts a ⚡ button on every line
+that has code actions; `"code_actions": "everywhere"` offers them on every line,
+`"off"` (or `false`) not at all. Cycling and pausing last until Zed restarts the server
+or the settings change; put permanent choices in the settings.
 
 **Agent panel**: enable the *TokenBurn* context server (Agent settings → MCP servers)
-and ask, e.g. *"Use tokenburn to show my daily token chart"*.
+and ask, e.g. *"Use tokenburn to show my daily token chart"*. The context server uses
+the binary the language server found (or downloads it); to point it at your own build
+instead, configure it as a custom server — `tokenburn-zed` picks MCP or LSP from the
+first message, so no arguments are needed:
 
-**Terminal**: `tokenburn-zed status --period week`, `tokenburn-zed report --tool claude`.
+```jsonc
+"context_servers": { "tokenburn": { "command": "/path/to/tokenburn-zed", "args": ["mcp"] } }
+```
+
+**Dashboards**: Zed extensions can't draw UI, so instead of re-drawing charts the
+extension opens the real tokenburn front-ends — same core, same settings, same themes:
+
+```sh
+cargo install tokenburn-gui tokenburn-web   # once; found on PATH or in ~/.cargo/bin
+```
+
+| Desktop (Iced) | Web (Topcoat, live over a WebSocket) |
+|---|---|
+| ![tokenburn GUI](https://raw.githubusercontent.com/sorinirimies/tokenburn/main/examples/vhs/generated/gui.gif) | ![tokenburn web](https://raw.githubusercontent.com/sorinirimies/tokenburn/main/examples/vhs/generated/web-interactive.gif) |
+
+Both start on the status bar's tool and period (last hour/today → hourly, week/month →
+daily, year/all → monthly). The web dashboard is only reused when it really is
+tokenburn-web on that port (checked via `/api/themes`); otherwise set `dashboard.port`.
+
+**Terminal**: `tokenburn-zed status --period week`, `tokenburn-zed report --tool claude`,
+`tokenburn-zed dashboard web --period month`.
 
 ## Settings
 
@@ -129,7 +159,8 @@ Zed `settings.json` — everything optional:
         "warn_pct": null,           // default: the shared limits' warn_at (80 %)
         "notify": true,             // Zed notifications for budget alerts
         "desktop_notifications": false,  // also OS notifications for the $ limits
-        "code_actions": true,
+        "code_actions": "first_line",  // "first_line" | "everywhere" | "off"
+        "dashboard": { "port": 3000, "gui_path": null, "web_path": null },
         "enabled": true
       }
       // "binary": { "path": "/path/to/tokenburn-zed", "arguments": ["lsp"] }
@@ -137,7 +168,7 @@ Zed `settings.json` — everything optional:
   },
   "context_servers": {
     "tokenburn": {
-      "settings": { "tool": "all" }  // same keys; used by the MCP tools
+      "settings": { "tool": "all" }  // same keys; the defaults of the MCP tools
     }
   }
 }
@@ -178,6 +209,7 @@ crates/tokenburn-zed/src/
   status.rs    the status-bar line
   chart.rs     text column charts
   report.rs    markdown report, breakdowns
+  dashboard.rs find/start tokenburn-gui and tokenburn-web on the status bar's view
   engine.rs    one refresh: read → line + new alerts
   lsp.rs       the language server (progress, notifications, code actions)
   mcp.rs       the MCP server
