@@ -31,8 +31,11 @@ const REPO: &str = "sorinirimies/zed-tokenburn";
 
 #[derive(Default)]
 struct TokenBurnExtension {
-    /// Path of the downloaded (or found) binary, reused for both servers.
+    /// Path of the downloaded binary (inside the extension's work directory).
     cached: Option<String>,
+    /// A binary the language server found on a worktree's PATH. Host paths are
+    /// outside the wasm sandbox, so it can't be checked with `fs::metadata`.
+    on_path: Option<String>,
 }
 
 impl TokenBurnExtension {
@@ -142,12 +145,16 @@ impl zed::Extension for TokenBurnExtension {
             .and_then(|b| b.env.clone())
             .map(|e| e.into_iter().collect())
             .unwrap_or_default();
-        let command = match binary.and_then(|b| b.path) {
-            Some(path) => path,
-            None => match worktree.which(BINARY) {
-                Some(path) => path,
-                None => self.downloaded_binary(Some(id))?,
-            },
+        let host_path = binary
+            .and_then(|b| b.path)
+            .or_else(|| worktree.which(BINARY));
+        let command = match host_path {
+            Some(path) => {
+                // Remember it: the context server has no worktree to search.
+                self.on_path = Some(path.clone());
+                path
+            }
+            None => self.downloaded_binary(Some(id))?,
         };
         Ok(zed::Command { command, args, env })
     }
@@ -193,7 +200,9 @@ impl zed::Extension for TokenBurnExtension {
         if let Some(extra) = command.env {
             env.extend(extra);
         }
-        let path = match command.path {
+        // No worktree here to search PATH: use the binary the language server
+        // found (or downloaded), else download it.
+        let path = match command.path.or_else(|| self.on_path.clone()) {
             Some(p) => p,
             None => self.downloaded_binary(None)?,
         };
