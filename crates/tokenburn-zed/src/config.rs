@@ -76,6 +76,46 @@ impl Budgets {
     }
 }
 
+/// Where the TokenBurn code actions are offered.
+///
+/// Zed marks every line that has code actions with a ⚡ button, so offering them on
+/// every line would put one wherever the cursor is. By default they live on the
+/// first line of a file only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodeActions {
+    Off,
+    #[default]
+    FirstLine,
+    Everywhere,
+}
+
+impl CodeActions {
+    /// `false`/`"off"`, `"first_line"`, `true`/`"everywhere"`.
+    fn parse(v: &Value) -> Option<Self> {
+        match v {
+            Value::Bool(false) => Some(Self::Off),
+            Value::Bool(true) => Some(Self::Everywhere),
+            Value::String(s) => match s.trim().to_ascii_lowercase().as_str() {
+                "off" | "none" | "never" => Some(Self::Off),
+                "first_line" | "first-line" | "line1" => Some(Self::FirstLine),
+                "everywhere" | "always" | "all" => Some(Self::Everywhere),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// Offer them for a request whose range starts on `line` (0-based)?
+    pub fn offered_at(self, line: u64) -> bool {
+        match self {
+            Self::Off => false,
+            Self::FirstLine => line == 0,
+            Self::Everywhere => true,
+        }
+    }
+}
+
 /// Everything the status bar, the alerts and the report can be told.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
@@ -106,8 +146,10 @@ pub struct Config {
     pub notify: bool,
     /// Also send an OS desktop notification for the shared dollar limits.
     pub desktop_notifications: bool,
-    /// Offer the TokenBurn code actions (report, cycle period, pause).
-    pub code_actions: bool,
+    /// Where to offer the TokenBurn code actions (report, cycle period, pause).
+    pub code_actions: CodeActions,
+    /// The tokenburn GUI / web dashboards the code actions open.
+    pub dashboard: crate::dashboard::DashboardConfig,
 }
 
 impl Default for Config {
@@ -127,7 +169,8 @@ impl Default for Config {
             warn_pct: None,
             notify: true,
             desktop_notifications: false,
-            code_actions: true,
+            code_actions: CodeActions::FirstLine,
+            dashboard: Default::default(),
         }
     }
 }
@@ -239,8 +282,11 @@ impl Config {
         if let Some(b) = flag("desktop_notifications") {
             self.desktop_notifications = b;
         }
-        if let Some(b) = flag("code_actions") {
-            self.code_actions = b;
+        if let Some(c) = v.get("code_actions").and_then(CodeActions::parse) {
+            self.code_actions = c;
+        }
+        if let Some(d) = v.get("dashboard").filter(|d| d.is_object()) {
+            self.dashboard.apply(d);
         }
     }
 
@@ -309,7 +355,8 @@ mod tests {
             "budgets": { "day_tokens": 5_000_000, "week_cost": 50.5 }
         })]);
         assert!(!c.enabled && !c.include_cache && !c.show_cost && !c.show_rate);
-        assert!(!c.show_hit && !c.show_saved && !c.notify && !c.code_actions);
+        assert!(!c.show_hit && !c.show_saved && !c.notify);
+        assert_eq!(c.code_actions, CodeActions::Off);
         assert!(c.desktop_notifications);
         assert_eq!(c.period, Span::Week);
         assert_eq!(c.tool, ToolFilter::Only(Tool::Claude));
@@ -343,6 +390,28 @@ mod tests {
         for v in [json!(null), json!(42), json!("today"), json!([1, 2])] {
             assert_eq!(Config::from_layers([&v]), Config::default());
         }
+    }
+
+    #[test]
+    fn code_actions_accept_booleans_and_names() {
+        let ca = |v: serde_json::Value| {
+            Config::from_layers([&json!({ "code_actions": v })]).code_actions
+        };
+        assert_eq!(Config::default().code_actions, CodeActions::FirstLine);
+        assert_eq!(ca(json!(true)), CodeActions::Everywhere);
+        assert_eq!(ca(json!(false)), CodeActions::Off);
+        assert_eq!(ca(json!("everywhere")), CodeActions::Everywhere);
+        assert_eq!(ca(json!("First_Line")), CodeActions::FirstLine);
+        assert_eq!(ca(json!("off")), CodeActions::Off);
+        assert_eq!(
+            ca(json!("sometimes")),
+            CodeActions::FirstLine,
+            "unknown keeps the default"
+        );
+        assert!(CodeActions::FirstLine.offered_at(0));
+        assert!(!CodeActions::FirstLine.offered_at(3));
+        assert!(CodeActions::Everywhere.offered_at(3));
+        assert!(!CodeActions::Off.offered_at(0));
     }
 
     #[test]
