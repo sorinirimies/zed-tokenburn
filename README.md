@@ -15,7 +15,7 @@ All Rust. Local logs only: no network calls, no account, no telemetry.
 </div>
 
 ```text
-TokenBurn: 🔥 51.50M ($20.04) [today] · 51.50M/h · 97% hit · ~$135.38 saved
+TokenBurn: 🔥 190.1k ($0.29) [today] · 38.9k/h · 90% hit · ~$0.43 saved
 ```
 
 The Zed member of the [TokenBurn](https://github.com/sorinirimies/tokenburn) family
@@ -24,6 +24,25 @@ the same numbers, the same budgets and alerts, now in Zed's status bar. It reads
 **pi, Zed's own agent panel, Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode,
 Amp, Cline, Roo Code, Kilo Code and Qwen Code** through
 [`tokenburn-core`](https://crates.io/crates/tokenburn-core).
+
+## In action
+
+**Status bar.** The line stays up to date while you work; `cmd-.` on line 1 switches
+the period (here: today → week).
+
+![TokenBurn in Zed's status bar](docs/media/statusbar.gif)
+
+**Usage report.** `cmd-.` → *open usage report*: every period, budgets, charts and
+the breakdown by tool and project, as Markdown in a Zed tab.
+
+![TokenBurn usage report in Zed](docs/media/report.gif)
+
+**MCP tools.** With the MCP server extension, Zed's agent answers from the same
+numbers.
+
+![Zed's agent calling the TokenBurn MCP tools](docs/media/mcp.gif)
+
+<sub>Recorded with made-up sample data.</sub>
 
 ## Features
 
