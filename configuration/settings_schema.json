@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TokenBurn settings",
+  "type": "object",
+  "properties": {
+    "enabled": { "type": "boolean", "default": true, "description": "Show the status-bar counter (the MCP tools always work)." },
+    "period": { "type": "string", "enum": ["hour", "today", "week", "month", "year", "all"], "default": "today" },
+    "tool": {
+      "type": "string",
+      "enum": ["all", "pi", "zed", "claude", "codex", "copilot", "gemini", "opencode", "amp", "cline", "roo", "kilo", "qwen"],
+      "default": "all"
+    },
+    "refresh_secs": { "type": "integer", "minimum": 2, "maximum": 3600, "default": 10 },
+    "include_cache": { "type": "boolean", "default": true },
+    "show_cost": { "type": "boolean", "default": true },
+    "show_rate": { "type": "boolean", "default": true },
+    "show_hit": { "type": "boolean", "default": true },
+    "show_saved": { "type": "boolean", "default": true },
+    "currency": { "type": ["string", "null"], "description": "ISO code (EUR, GBP, …); default: TokenBurn's shared setting." },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "day_tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "week_tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "month_tokens": { "type": ["integer", "null"], "minimum": 1 },
+        "day_cost": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "week_cost": { "type": ["number", "null"], "exclusiveMinimum": 0 },
+        "month_cost": { "type": ["number", "null"], "exclusiveMinimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "warn_pct": { "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 100 },
+    "notify": { "type": "boolean", "default": true },
+    "desktop_notifications": { "type": "boolean", "default": false },
+    "code_actions": { "type": "boolean", "default": true }
+  },
+  "additionalProperties": false
+}

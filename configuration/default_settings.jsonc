@@ -1,0 +1,9 @@
+{
+  // Which tools count: "all", "pi", "zed", "claude", "codex", "copilot", "gemini",
+  // "opencode", "amp", "cline", "roo", "kilo" or "qwen".
+  "tool": "all",
+  // Count prompt-cache read/write tokens in the totals.
+  "include_cache": true,
+  // Token budgets (and dollar ones: day_cost, week_cost, month_cost).
+  "budgets": {}
+}
