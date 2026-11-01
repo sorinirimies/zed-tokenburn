@@ -1,0 +1,23 @@
+# The TokenBurn MCP server extension for Zed (`tokenburn-mcp-server`): one context
+# server, `tokenburn-zed mcp`. Zed builds it from this directory; it shares the
+# workspace (lockfile, version) and the binary download code (`../src`) with the
+# status-bar extension at the repository root.
+
+[package]
+name = "zed-tokenburn-mcp"
+description = "Zed extension: TokenBurn MCP server — AI token and cost usage tools for Zed's agent"
+publish = false
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+zed_extension_api = { workspace = true }
+serde_json = { workspace = true }

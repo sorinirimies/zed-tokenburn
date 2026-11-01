@@ -9,11 +9,11 @@ The `tokenburn-zed` binary is downloaded from the
 time it is needed. To use your own build instead:
 
 ```sh
-cargo install tokenburn-zed
+cargo install --git https://github.com/sorinirimies/zed-tokenburn tokenburn-zed
 ```
 
-and set `"command": { "path": "/path/to/tokenburn-zed", "arguments": ["mcp"] }`.
+and set `"binary_path": "/path/to/tokenburn-zed"` below.
 
 Tools: `tokenburn_usage`, `tokenburn_report`, `tokenburn_chart`,
 `tokenburn_breakdown`, `tokenburn_budgets`. The settings below are optional and the
-same as the status bar's (`lsp.tokenburn.settings`).
+same as the status bar's (`lsp.tokenburn.settings` of the TokenBurn extension).

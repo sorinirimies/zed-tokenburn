@@ -1930,6 +1930,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "zed-tokenburn-mcp"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "zed_extension_api",
+]
+
+[[package]]
 name = "zed_extension_api"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

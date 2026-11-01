@@ -1,9 +1,11 @@
 # The repository root is two things at once:
 #
-# * the Zed extension itself (`zed-tokenburn`, compiled to `wasm32-wasip2` by Zed
-#   from this directory — Zed only reads `extension.toml` and this package), and
-# * the workspace root, so the native companion `tokenburn-zed` (language server +
-#   MCP server, reusing `tokenburn-core`) shares one lockfile and one version.
+# * the status-bar Zed extension (`tokenburn`, package `zed-tokenburn`, compiled to
+#   `wasm32-wasip2` by Zed from this directory — Zed only reads `extension.toml`
+#   and this package), and
+# * the workspace root, so the MCP server extension (`mcp/`, id
+#   `tokenburn-mcp-server`) and the native companion `tokenburn-zed` (language
+#   server + MCP server, reusing `tokenburn-core`) share one lockfile and version.
 #
 # `cargo build` here builds only the extension (`default-members`); use
 # `cargo build -p tokenburn-zed` (or `just build-server`) for the native binary.
@@ -28,7 +30,7 @@ zed_extension_api = { workspace = true }
 serde_json = { workspace = true }
 
 [workspace]
-members = [".", "crates/tokenburn-zed"]
+members = [".", "mcp", "crates/tokenburn-zed"]
 default-members = ["."]
 resolver = "2"
 

@@ -1,4 +1,6 @@
 {
+  // Use your own tokenburn-zed instead of downloading the latest release.
+  // "binary_path": "/path/to/tokenburn-zed",
   // Which tools count: "all", "pi", "zed", "claude", "codex", "copilot", "gemini",
   // "opencode", "amp", "cline", "roo", "kilo" or "qwen".
   "tool": "all",

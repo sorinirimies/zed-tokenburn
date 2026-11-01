@@ -1,6 +1,6 @@
 id = "tokenburn"
 name = "TokenBurn"
-description = "Live AI token and cost usage in Zed's status bar — pi, Zed, Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, Amp, Cline, Roo, Kilo, Qwen. Budgets, alerts, charts, MCP tools. Local logs only."
+description = "Live AI token and cost usage in Zed's status bar — pi, Zed, Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, Amp, Cline, Roo, Kilo, Qwen. Budgets, alerts, reports, dashboards. Local logs only."
 version = "0.1.0"
 schema_version = 1
 authors = ["Sorin Irimies <sorinirimies@gmail.com>"]
@@ -277,10 +277,6 @@ languages = [
     "Uiua",
     "edge",
 ]
-
-# MCP server for Zed's agent: tokenburn_usage, tokenburn_report, tokenburn_chart,
-# tokenburn_breakdown, tokenburn_budgets. Settings: `context_servers.tokenburn`.
-[context_servers.tokenburn]
 
 # The native `tokenburn-zed` binary comes from this repository's GitHub releases
 # (unless it is on PATH or configured in the settings).

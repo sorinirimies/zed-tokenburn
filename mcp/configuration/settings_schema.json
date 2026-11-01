@@ -3,6 +3,13 @@
   "title": "TokenBurn settings",
   "type": "object",
   "properties": {
+    "binary_path": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Use this tokenburn-zed binary instead of downloading the latest release (e.g. after `cargo install --git https://github.com/sorinirimies/zed-tokenburn tokenburn-zed`)."
+    },
     "enabled": {
       "type": "boolean",
       "default": true,
