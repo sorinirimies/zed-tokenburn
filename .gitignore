@@ -7,3 +7,4 @@
 /fuzz/artifacts/
 .DS_Store
 /mcp/target/
+.codegraph/
