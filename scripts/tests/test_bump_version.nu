@@ -15,7 +15,7 @@ version      = "0.1.0"
 edition      = "2021"
 
 [workspace.dependencies]
-tokenburn-core    = "=0.3.7"
+tokenburn-core    = "=0.3.13"
 serde = { version = "1", features = ["derive"] }
 '
 
@@ -55,7 +55,7 @@ def "test bump: a pre-release sorts below its release" [] {
 def "test bump: only the workspace.package version changes" [] {
     let out = (set_workspace_version $CARGO "0.2.0")
     assert ($out | str contains 'version      = "0.2.0"')
-    assert ($out | str contains 'tokenburn-core    = "=0.3.7"') "dependency pins stay"
+    assert ($out | str contains 'tokenburn-core    = "=0.3.13"') "dependency pins stay"
     assert ($out | str contains 'serde = { version = "1"') "dependency versions stay"
     assert ($out | str contains 'version.workspace = true')
     assert equal ($out | from toml | get workspace.package.version) "0.2.0"

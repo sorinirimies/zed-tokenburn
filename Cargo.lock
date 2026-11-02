@@ -1343,9 +1343,9 @@ dependencies = [
 
 [[package]]
 name = "tokenburn-core"
-version = "0.3.7"
+version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97ca759a6b945121bbae49afb44b4d1f8169e3c67cf2cea9eb93245108f1bc07"
+checksum = "b7aa037bcf6e1bd779f147dc2e1d4cc3cf8d87a5ec457075f1d1707b0647727c"
 dependencies = [
  "anyhow",
  "chrono",

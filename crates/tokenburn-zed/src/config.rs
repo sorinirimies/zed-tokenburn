@@ -135,7 +135,7 @@ pub struct Config {
     pub show_rate: bool,
     /// Prompt-cache hit ratio.
     pub show_hit: bool,
-    /// Estimated savings (prompt cache, rtk, pi compaction).
+    /// Estimated savings (prompt cache, rtk).
     pub show_saved: bool,
     /// Display currency code; `None` = the shared TokenBurn setting.
     pub currency: Option<String>,

@@ -53,7 +53,7 @@ numbers.
 | **Budgets & limits** | daily / weekly / monthly **token** budgets (Zed settings) and **dollar** limits (shared with every TokenBurn front-end), each alerting once per period as a Zed notification, with a linear forecast ("at this pace it runs out Thu 14:05") |
 | **Dashboards** | code actions open tokenburn's own **Rust dashboards** on the status bar's view — the native Iced desktop app (`tokenburn-gui`) or the live web dashboard (`tokenburn-web`, opened in your browser): interactive animated charts, click-to-drill-down, 43 themes, limits and savings panels |
 | **Report** | a code action opens a markdown report in a tab: usage for every period, budgets, daily / weekly / monthly charts, usage by tool and by project, savings by source |
-| **Savings** | prompt cache, [rtk](https://github.com/rtk-ai/rtk) and pi compaction, valued at your input price |
+| **Savings** | prompt cache and [rtk](https://github.com/rtk-ai/rtk), valued at your input price (pi plugins' savings show in pi, via [pi-tokenburn](https://github.com/sorinirimies/pi-tokenburn)) |
 | **Agent tools (MCP)** | Zed's agent can answer "what did I spend this week?" itself: `tokenburn_usage`, `tokenburn_report`, `tokenburn_chart`, `tokenburn_breakdown`, `tokenburn_budgets` |
 | **Filters** | one tool or all, with or without cache tokens, any currency TokenBurn knows |
 

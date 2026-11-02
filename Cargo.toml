@@ -44,9 +44,9 @@ repository   = "https://github.com/sorinirimies/zed-tokenburn"
 
 [workspace.dependencies]
 zed_extension_api = "0.7"
-# Pinned: 0.3.7 is the newest *fixed* release (zstd 0.14, RUSTSEC-2026-0391 & co.);
-# 0.3.8/0.3.9 were published earlier from an older branch and still use zstd 0.13.
-tokenburn-core    = "=0.3.7"
+# Pinned exactly: core bumps change what the extension shows, so each one is a deliberate
+# release (0.3.8/0.3.9 were published from an older branch with zstd 0.13: skip them).
+tokenburn-core    = "=0.3.13"
 anyhow            = "1"
 chrono            = "0.4"
 crossbeam-channel = "0.5"

@@ -43,7 +43,7 @@ def "test workflows: dependabot covers cargo but never the pinned crates" [] {
     assert equal $cargo.directory? "/" "root only: /fuzz gives duplicate, half-updated PRs"
     assert equal $cargo.directories? null
     let ignored = $cargo.ignore | get dependency-name
-    assert ("tokenburn-core" in $ignored) "tokenburn-core stays pinned (zstd)"
+    assert ("tokenburn-core" in $ignored) "tokenburn-core bumps are deliberate releases"
     assert ("zed_extension_api" in $ignored) "zed_extension_api bumps are releases"
 }
 

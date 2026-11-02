@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Local, Utc};
 use serde::Serialize;
-use tokenburn_core::{ExternalSavings, Row, Savings, Summary, Tool, ToolFilter};
+use tokenburn_core::{ExternalSavings, Row, Savings, Summary, ToolFilter};
 
 use crate::span::Span;
 
@@ -55,15 +55,15 @@ pub fn hit_ratio(s: &Summary) -> Option<f64> {
     (prompt > 0).then(|| s.cache_read as f64 / prompt as f64)
 }
 
-/// The external savings that belong to `tool`: rtk cannot tell which agent ran a
-/// command (so it counts only for "all"), compactions are pi's.
+/// The external savings shown in Zed: rtk, which cannot tell which agent ran a
+/// command (so it counts only for "all"). The pi plugins' savings (compaction,
+/// context-diet, squeeze) belong to pi and are shown there, by pi-tokenburn.
 pub fn external_for(tool: ToolFilter, ext: &ExternalSavings) -> ExternalSavings {
     match tool {
-        ToolFilter::All => ext.clone(),
-        ToolFilter::Only(Tool::Pi) => ExternalSavings {
-            compaction_tokens: ext.compaction_tokens,
-            compactions: ext.compactions,
-            compaction_events: ext.compaction_events.clone(),
+        ToolFilter::All => ExternalSavings {
+            rtk_tokens: ext.rtk_tokens,
+            rtk_commands: ext.rtk_commands,
+            rtk_events: ext.rtk_events.clone(),
             ..Default::default()
         },
         ToolFilter::Only(_) => ExternalSavings::default(),
@@ -123,6 +123,7 @@ pub fn span_stats(
 pub(crate) mod tests {
     use super::*;
     use chrono::{Duration, TimeZone};
+    use tokenburn_core::Tool;
 
     pub(crate) fn row(
         tool: Tool,
@@ -221,18 +222,26 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn savings_count_the_cache_and_the_external_sources_per_tool() {
+    fn only_rtk_counts_for_all_tools_and_pi_plugin_savings_stay_in_pi() {
         let ext = ExternalSavings {
             rtk_tokens: 1_000_000,
             rtk_commands: 3,
             compaction_tokens: 500_000,
             compactions: 1,
+            diet_tokens: 200_000,
+            diet_requests: 4,
+            squeeze_tokens: 100_000,
+            squeeze_outputs: 2,
             ..Default::default()
         };
-        assert_eq!(external_for(ToolFilter::All, &ext), ext);
-        let pi = external_for(ToolFilter::PI, &ext);
-        assert_eq!((pi.rtk_tokens, pi.compaction_tokens), (0, 500_000));
-        let zed = external_for(ToolFilter::Only(Tool::Zed), &ext);
-        assert_eq!(zed, ExternalSavings::default());
+        let rtk_only = ExternalSavings {
+            rtk_tokens: 1_000_000,
+            rtk_commands: 3,
+            ..Default::default()
+        };
+        assert_eq!(external_for(ToolFilter::All, &ext), rtk_only);
+        for tool in [ToolFilter::PI, ToolFilter::Only(Tool::Zed)] {
+            assert_eq!(external_for(tool, &ext), ExternalSavings::default());
+        }
     }
 }
