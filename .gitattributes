@@ -1,2 +1,0 @@
-# Demo recordings live in Git LFS (keeps clones small).
-*.gif filter=lfs diff=lfs merge=lfs -text
