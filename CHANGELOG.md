@@ -4,6 +4,39 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
+## [0.1.1](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.0...v0.1.1) — 2026-11-02
+
+### ✨ Features
+
+- Move to tokenburn-core 0.3.13 and leave pi plugins' savings to pi ([`461a5d7`](https://github.com/sorinirimies/zed-tokenburn/commit/461a5d70b84e4f302905fe3936c11ebaaeab90b3))
+
+### 🐛 Bug fixes
+
+- **scripts:** Show git's error when a remote operation fails ([`2bddaa3`](https://github.com/sorinirimies/zed-tokenburn/commit/2bddaa32fa1a348bfdb22bc4ddf83a81bbfb1277))
+
+### 📚 Documentation
+
+- Drop the per-repo agent rules skill; the shared skills cover it ([`7bfe1d0`](https://github.com/sorinirimies/zed-tokenburn/commit/7bfe1d0a5cd0e1d6164e8a8ecfe9065ad0dee848))
+- This repo's agent rules as a project skill in .agents/skills ([`5153bc7`](https://github.com/sorinirimies/zed-tokenburn/commit/5153bc793fa5ac91d49b369cb0a0aab35d57f963))
+- Add demo recordings to the README ([`7191d74`](https://github.com/sorinirimies/zed-tokenburn/commit/7191d747975423d3071a43238839712248faf2b6))
+
+### 📦 Dependencies
+
+- Nightly cargo update 2026-11-02 ([`857d15a`](https://github.com/sorinirimies/zed-tokenburn/commit/857d15a1d320377afdd78e6875c34eea19eef469))
+- Bump dirs from 6.0.0 to 7.0.0 (#4) ([`212759e`](https://github.com/sorinirimies/zed-tokenburn/commit/212759e4a96e0c696467dbb7efbcfe5eb4485788))
+
+### 🔄 CI and release
+
+- Let Dependabot scan only the root manifest ([`29c1654`](https://github.com/sorinirimies/zed-tokenburn/commit/29c16547d20c2044be406a018cbacb86983ab729))
+- Split CI into one job per quality-gate step on both hosts and name every step ([`8946d16`](https://github.com/sorinirimies/zed-tokenburn/commit/8946d16afa514fba9644b28a8ea4b827fdf26c62))
+- Merge green Dependabot PRs after CI and let Dependabot bump cargo dependencies ([`84d0647`](https://github.com/sorinirimies/zed-tokenburn/commit/84d06479da8290837ffe3a20b962a9ef56ea7828))
+- Bump softprops/action-gh-release from 2 to 3 (#2) ([`b3bc42a`](https://github.com/sorinirimies/zed-tokenburn/commit/b3bc42a88487ec1882d1371b2ad26d1c9782407f))
+- Bump dependabot/fetch-metadata from 2 to 3 (#1) ([`2621721`](https://github.com/sorinirimies/zed-tokenburn/commit/2621721f126ea3343b21c448ffae0a40875bd0dc))
+
+### 🔧 Chores
+
+- Ignore .codegraph index ([`3570e70`](https://github.com/sorinirimies/zed-tokenburn/commit/3570e70374df49d9b5b0a5d6eb8b21f3b9ef4237))
+
 ## [0.1.0](https://github.com/sorinirimies/zed-tokenburn/releases/tag/v0.1.0) — 2026-11-01
 
 ### ✨ Features

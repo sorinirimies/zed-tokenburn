@@ -1,7 +1,7 @@
 id = "tokenburn-mcp-server"
 name = "TokenBurn MCP Server"
 description = "Read-only AI token and cost usage tools for Zed's agent — pi, Zed, Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, Amp, Cline, Roo, Kilo, Qwen. Local logs only."
-version = "0.1.0"
+version = "0.1.1"
 schema_version = 1
 authors = ["Sorin Irimies <sorinirimies@gmail.com>"]
 repository = "https://github.com/sorinirimies/zed-tokenburn"
