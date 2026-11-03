@@ -108,6 +108,11 @@ coverage:
 doc:
     $env.RUSTDOCFLAGS = "-D warnings"; cargo doc --no-deps --workspace
 
+# Secrets anywhere in the git history (brew install gitleaks); CI runs it on every push.
+# A false positive goes in .gitleaksignore, by the fingerprint gitleaks prints.
+secrets:
+    gitleaks git --redact --no-banner .
+
 # Everything CI runs (fmt check, clippy native + wasm, wasm build, tests, versions, nu tests)
 check-all: fmt
     nu scripts/ci/quality_gate.nu
