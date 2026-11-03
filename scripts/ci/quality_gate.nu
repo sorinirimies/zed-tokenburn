@@ -28,6 +28,7 @@ export const STEPS = [
     [test "cargo test --workspace"]
     [doc "cargo doc (warnings are errors)"]
     [versions "versions agree"]
+    [machete "unused dependencies (cargo machete)"]
     [nu "nushell tests"]
 ]
 
@@ -65,6 +66,10 @@ def step_cmd [id: string]: nothing -> closure {
         "test" => {|| cargo test --workspace --all-features }
         "doc" => {|| with-env { RUSTDOCFLAGS: "-D warnings" } { cargo doc --no-deps --workspace --quiet } }
         "versions" => {|| nu scripts/ci/check_versions.nu }
+        "machete" => {||
+            if (which cargo-machete | is-empty) { ^cargo install cargo-machete --locked }
+            cargo machete
+        }
         "nu" => {|| nu scripts/tests/run_all.nu }
     }
 }

@@ -120,8 +120,8 @@ jobs:
         uses: hustcer/setup-nu@v3
         with:
           version: "0.116.1"
-      - name: Versions agree and Nu script tests
-        run: nu scripts/ci/quality_gate.nu --only versions,nu
+      - name: Versions agree, no unused dependencies, Nu script tests
+        run: nu scripts/ci/quality_gate.nu --only versions,machete,nu
 
   # The Linux release binaries are static musl ones (any distro).
   musl:

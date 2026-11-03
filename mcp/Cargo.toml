@@ -21,3 +21,8 @@ path = "src/lib.rs"
 [dependencies]
 zed_extension_api = { workspace = true }
 serde_json = { workspace = true }
+
+# serde_json is used by ../src/resolve.rs, which lib.rs includes with #[path];
+# cargo machete does not follow #[path], so it would call it unused.
+[package.metadata.cargo-machete]
+ignored = ["serde_json"]
