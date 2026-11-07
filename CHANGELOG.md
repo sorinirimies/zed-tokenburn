@@ -4,6 +4,31 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
+## [0.1.2](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.1...v0.1.2) — 2026-11-07
+
+### ✨ Features
+
+- The status line flashes instead of a permanent spinner; code actions pick today, week, month, year or all ([`b4a6950`](https://github.com/sorinirimies/zed-tokenburn/commit/b4a695012bb3642482119bac32e619d06f0f06d6))
+- Just setup installs tokenburn-zed (crates.io, GitHub release as fallback) and links both extensions into Zed ([`1116f0a`](https://github.com/sorinirimies/zed-tokenburn/commit/1116f0ac496c5a11155f4aa75dc2d5c475655c12))
+
+### 📚 Documentation
+
+- Store the demo recordings as plain files; the Zed extension registry rejects Git LFS ([`8ed84cd`](https://github.com/sorinirimies/zed-tokenburn/commit/8ed84cd707fce162c300a50c41557d5ca531988c))
+
+### 📦 Dependencies
+
+- Nightly cargo update 2026-11-07 ([`553f338`](https://github.com/sorinirimies/zed-tokenburn/commit/553f3381c2099d5e566fde88174b79efd3f657f1))
+- Nightly cargo update 2026-11-06 ([`f78c895`](https://github.com/sorinirimies/zed-tokenburn/commit/f78c895651efa4f514d2816d5f5d372427e8fa16))
+- Nightly cargo update 2026-11-05 ([`88131cb`](https://github.com/sorinirimies/zed-tokenburn/commit/88131cbfab8941d6cfc3e1ac06c5c75c09a84841))
+- Nightly cargo update 2026-11-04 ([`32c68a6`](https://github.com/sorinirimies/zed-tokenburn/commit/32c68a66e71feda22ac66751d30764b301153704))
+- Nightly cargo update 2026-11-03 ([`5fe2a34`](https://github.com/sorinirimies/zed-tokenburn/commit/5fe2a345fa7cc722714c1e790ebb09f20307778a))
+
+### 🔄 CI and release
+
+- Download archives to a file so curl retries a dropped transfer, instead of piping into tar ([`e64eea8`](https://github.com/sorinirimies/zed-tokenburn/commit/e64eea897810f83b1a4e7d36a1f91388d298f660))
+- Scan the git history for secrets with gitleaks ([`805c1e3`](https://github.com/sorinirimies/zed-tokenburn/commit/805c1e326f926e7b15112cef978461638fb7a265))
+- Gate on unused dependencies (cargo machete) ([`93f2148`](https://github.com/sorinirimies/zed-tokenburn/commit/93f2148cc9fdfbb1244c166c99baf109f97c4c11))
+
 ## [0.1.1](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.0...v0.1.1) — 2026-11-02
 
 ### ✨ Features

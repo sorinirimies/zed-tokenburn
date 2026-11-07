@@ -1,7 +1,7 @@
 id = "tokenburn"
 name = "TokenBurn"
 description = "Live AI token and cost usage in Zed's status bar — pi, Zed, Claude Code, Codex, Copilot CLI, Gemini CLI, OpenCode, Amp, Cline, Roo, Kilo, Qwen. Budgets, alerts, reports, dashboards. Local logs only."
-version = "0.1.1"
+version = "0.1.2"
 schema_version = 1
 authors = ["Sorin Irimies <sorinirimies@gmail.com>"]
 repository = "https://github.com/sorinirimies/zed-tokenburn"
