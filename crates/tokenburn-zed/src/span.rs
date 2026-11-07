@@ -66,17 +66,9 @@ impl Span {
         }
     }
 
-    /// The next span for "cycle": today → week → month → year → all → hour → today.
-    pub fn next(self) -> Span {
-        match self {
-            Span::Today => Span::Week,
-            Span::Week => Span::Month,
-            Span::Month => Span::Year,
-            Span::Year => Span::All,
-            Span::All => Span::Hour,
-            Span::Hour => Span::Today,
-        }
-    }
+    /// The spans the code actions offer for the status bar, in menu order. The
+    /// last hour stays a setting only.
+    pub const PICKS: [Span; 5] = [Span::Today, Span::Week, Span::Month, Span::Year, Span::All];
 
     /// First instant of the span containing `now`, as UTC.
     pub fn start(self, now: DateTime<Local>) -> DateTime<Utc> {
@@ -161,17 +153,9 @@ mod tests {
     }
 
     #[test]
-    fn cycle_visits_every_span_once() {
-        let mut s = Span::Today;
-        let mut seen = Vec::new();
-        for _ in 0..Span::ALL.len() {
-            seen.push(s);
-            s = s.next();
-        }
-        assert_eq!(s, Span::Today, "the cycle closes");
-        seen.sort_by_key(|s| s.as_str());
-        seen.dedup();
-        assert_eq!(seen.len(), Span::ALL.len());
+    fn the_menu_offers_day_week_month_year_and_all() {
+        let names: Vec<&str> = Span::PICKS.iter().map(|s| s.as_str()).collect();
+        assert_eq!(names, ["today", "week", "month", "year", "all"]);
     }
 
     // 2026-05-06 is a Wednesday.

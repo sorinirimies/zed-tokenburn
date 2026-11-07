@@ -1,14 +1,16 @@
 //! The language server: Zed's way to get text into its status bar.
 //!
 //! Zed extensions cannot add status-bar items, but Zed shows a language server's
-//! work-done progress at the bottom of the window. So this server opens one
-//! progress (`window/workDoneProgress/create`, then `$/progress` *begin*) titled
-//! `TokenBurn` and keeps it open, sending a `report` with the new line whenever it
-//! changes. Alerts become `window/showMessage` notifications.
+//! work-done progress at the bottom of the window, always with a spinner. So the
+//! line *flashes*: this server opens a progress (`window/workDoneProgress/create`,
+//! then `$/progress` *begin*) titled `TokenBurn`, updates it with `report`, and
+//! ends it after [`FLASH`]. It flashes on start, when the settings change, when
+//! the user picks a period or asks to see it, and when a budget alert is reached
+//! (see [`Flash`]). Alerts also become `window/showMessage` notifications.
 //!
 //! Interaction, since extensions cannot add commands either, is through code
-//! actions (`cmd-.` / `ctrl-.` in any buffer): open the report, cycle the period,
-//! pause/resume. They run as `workspace/executeCommand`.
+//! actions (`cmd-.` / `ctrl-.` in any buffer): open the report, show the status,
+//! pick its period, pause/resume. They run as `workspace/executeCommand`.
 //!
 //! The server never touches documents: no diagnostics, no edits. It is registered
 //! for many languages only so Zed starts it whatever file is open.
@@ -17,7 +19,7 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use crossbeam_channel::{select, unbounded, Receiver, RecvTimeoutError, Sender};
@@ -33,9 +35,14 @@ use crate::span::Span;
 /// The progress title: Zed shows `TokenBurn: <line>`.
 pub const TITLE: &str = "TokenBurn";
 
+/// How long the status line stays up after a flash starts.
+pub const FLASH: Duration = Duration::from_secs(6);
+
 pub const CMD_REPORT: &str = "tokenburn.openReport";
-pub const CMD_CYCLE: &str = "tokenburn.cyclePeriod";
+/// Takes the period (`today`, `week`, …) as its one argument.
+pub const CMD_PERIOD: &str = "tokenburn.setPeriod";
 pub const CMD_PAUSE: &str = "tokenburn.togglePause";
+/// Refreshes and flashes the status line.
 pub const CMD_REFRESH: &str = "tokenburn.refresh";
 pub const CMD_GUI: &str = "tokenburn.openDesktopDashboard";
 pub const CMD_WEB: &str = "tokenburn.openWebDashboard";
@@ -43,7 +50,7 @@ pub const COMMANDS: [&str; 6] = [
     CMD_REPORT,
     CMD_GUI,
     CMD_WEB,
-    CMD_CYCLE,
+    CMD_PERIOD,
     CMD_PAUSE,
     CMD_REFRESH,
 ];
@@ -155,6 +162,70 @@ struct Overrides {
     paused: Option<bool>,
 }
 
+/// When the status line is up. Zed draws a spinner next to any open progress,
+/// so the line shows for a while after something worth seeing, then goes away.
+#[derive(Debug)]
+pub struct Flash {
+    /// How long a flash lasts.
+    duration: Duration,
+    /// The line is up until then.
+    until: Option<Instant>,
+    /// The next line should flash (start, settings, a user action).
+    pending: bool,
+    /// The budget level of the last line.
+    level: Level,
+}
+
+impl Flash {
+    /// A flash of `duration`, with the first line pending.
+    pub fn new(duration: Duration) -> Self {
+        Self {
+            duration,
+            until: None,
+            pending: true,
+            level: Level::Ok,
+        }
+    }
+
+    /// Flash the next line.
+    pub fn request(&mut self) {
+        self.pending = true;
+    }
+
+    /// A new line arrived (`None` while paused). Returns whether it is shown.
+    ///
+    /// It starts a flash when one was requested or the budget level rose to a
+    /// warning or over; during a flash the line just updates.
+    pub fn on_line(&mut self, now: Instant, line: bool, level: Level) -> bool {
+        let alert = level != Level::Ok && level != self.level;
+        self.level = level;
+        if !line {
+            self.until = None;
+            return false;
+        }
+        if std::mem::take(&mut self.pending) || alert {
+            self.until = Some(now + self.duration);
+        }
+        self.until.is_some()
+    }
+
+    /// Whether the flash is over at `now`; it ends once.
+    pub fn expired(&mut self, now: Instant) -> bool {
+        let over = self.until.is_some_and(|t| now >= t);
+        if over {
+            self.until = None;
+        }
+        over
+    }
+
+    /// How long the main loop may wait before the flash ends.
+    pub fn wait(&self, now: Instant) -> Duration {
+        self.until.map_or(Duration::from_secs(3600), |t| {
+            t.saturating_duration_since(now)
+        })
+    }
+}
+
 pub struct Server {
     sender: Sender<Message>,
     /// Settings from `initializationOptions` (lower precedence).
@@ -163,6 +234,7 @@ pub struct Server {
     settings: Value,
     overrides: Overrides,
     progress: Progress,
+    flash: Flash,
     next_id: i32,
     cmds: Sender<Cmd>,
     events_tx: Sender<Event>,
@@ -319,7 +391,10 @@ impl Server {
     pub fn on_event(&mut self, ev: Event) {
         match ev {
             Event::Snapshot(snap) => {
-                self.set_status(snap.status);
+                let shown = self
+                    .flash
+                    .on_line(Instant::now(), snap.status.is_some(), snap.level);
+                self.set_status(snap.status.filter(|_| shown));
                 for n in &snap.notices {
                     self.show_message(n.level, &notice_text(n));
                 }
@@ -365,6 +440,7 @@ impl Server {
                 "workspace/didChangeConfiguration" => {
                     self.settings = n.params.get("settings").cloned().unwrap_or(Value::Null);
                     self.overrides = Overrides::default();
+                    self.flash.request();
                     self.config_changed();
                 }
                 _ => {}
@@ -430,13 +506,16 @@ impl Server {
         }
         if cfg.enabled {
             out.push(cmd(
-                format!(
-                    "🔥 TokenBurn: status bar → {} (now {})",
-                    cfg.period.next(),
-                    cfg.period
-                ),
-                CMD_CYCLE,
+                format!("🔥 TokenBurn: show the status bar ({})", cfg.period.title()),
+                CMD_REFRESH,
             ));
+            for span in Span::PICKS.into_iter().filter(|s| *s != cfg.period) {
+                out.push(json!({
+                    "title": format!("🔥 TokenBurn: status bar → {}", span.title()),
+                    "command": CMD_PERIOD,
+                    "arguments": [span.as_str()],
+                }));
+            }
             out.push(cmd("🔥 TokenBurn: pause the status bar".into(), CMD_PAUSE));
         } else {
             out.push(cmd("🔥 TokenBurn: resume the status bar".into(), CMD_PAUSE));
@@ -473,15 +552,27 @@ impl Server {
                     let _ = tx.send(Event::Web(web(&cfg)));
                 });
             }
-            CMD_CYCLE => {
-                self.overrides.period = Some(self.config().period.next());
+            CMD_PERIOD => {
+                let span = params
+                    .pointer("/arguments/0")
+                    .and_then(Value::as_str)
+                    .ok_or("a period argument".to_string())
+                    .and_then(str::parse::<Span>)
+                    .map_err(|e| (ErrorCode::InvalidParams, e))?;
+                self.overrides.period = Some(span);
+                self.flash.request();
                 self.config_changed();
             }
             CMD_PAUSE => {
-                self.overrides.paused = Some(self.config().enabled);
+                let resume = !self.config().enabled;
+                self.overrides.paused = Some(!resume);
+                if resume {
+                    self.flash.request();
+                }
                 self.config_changed();
             }
             CMD_REFRESH => {
+                self.flash.request();
                 let _ = self.cmds.send(Cmd::Refresh);
             }
             other => {
@@ -518,6 +609,17 @@ pub fn serve(
     report: ReportWriter,
     dashboards: Dashboards,
 ) -> Result<()> {
+    serve_flashing(conn, refresh, report, dashboards, FLASH)
+}
+
+/// [`serve`] with a given flash length (tests use a short one).
+fn serve_flashing(
+    conn: Connection,
+    refresh: Refresher,
+    report: ReportWriter,
+    dashboards: Dashboards,
+    flash: Duration,
+) -> Result<()> {
     let (id, params) = conn.initialize_start()?;
     conn.initialize_finish(id, capabilities())?;
 
@@ -538,6 +640,7 @@ pub fn serve(
                 .unwrap_or(false),
             ..Default::default()
         },
+        flash: Flash::new(flash),
         next_id: 0,
         cmds: cmds_tx,
         events_tx: events_tx.clone(),
@@ -554,12 +657,17 @@ pub fn serve(
     let worker = std::thread::spawn(move || refresh_loop(first, cmds_rx, events_tx, refresh));
 
     loop {
+        let wait = server.flash.wait(Instant::now());
         select! {
             recv(conn.receiver) -> msg => match msg {
                 Ok(msg) => if !server.on_message(msg) { break },
                 Err(_) => break,
             },
             recv(events_rx) -> ev => if let Ok(ev) = ev { server.on_event(ev) },
+            default(wait) => {},
+        }
+        if server.flash.expired(Instant::now()) {
+            server.set_status(None);
         }
     }
     let _ = server.cmds.send(Cmd::Stop);
@@ -622,7 +730,12 @@ mod tests {
     }
 
     impl Harness {
+        /// A server whose flash outlasts every test.
         fn start(progress: bool, init: Value) -> Self {
+            Self::start_flashing(progress, init, Duration::from_secs(60))
+        }
+
+        fn start_flashing(progress: bool, init: Value, flash: Duration) -> Self {
             let (server, client) = Connection::memory();
             let refreshes = Arc::new(AtomicUsize::new(0));
             let count = refreshes.clone();
@@ -651,8 +764,9 @@ mod tests {
                 }),
                 web: Arc::new(|cfg: &Config| Ok((crate::dashboard::web_url(4321, cfg), None))),
             };
-            let thread =
-                std::thread::spawn(move || serve(server, refresh, report, dashboards).unwrap());
+            let thread = std::thread::spawn(move || {
+                serve_flashing(server, refresh, report, dashboards, flash).unwrap()
+            });
             client
                 .sender
                 .send(
@@ -799,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn code_actions_cycle_and_pause() {
+    fn code_actions_pick_the_period_and_pause() {
         let h = Harness::start(true, Value::Null);
         let token = h.accept_create();
         assert_eq!(h.progress()["value"]["message"], "🔥 42 [today]");
@@ -814,15 +928,26 @@ mod tests {
             .iter()
             .map(|a| a["title"].as_str().unwrap())
             .collect();
-        assert_eq!(titles.len(), 5, "{titles:?}");
-        assert!(titles[1].contains("desktop dashboard"));
-        assert!(titles[2].contains("web dashboard"));
-        assert!(titles[3].contains("→ week (now today)"));
+        assert_eq!(
+            titles,
+            [
+                "🔥 TokenBurn: open usage report",
+                "🔥 TokenBurn: open the desktop dashboard",
+                "🔥 TokenBurn: open the web dashboard",
+                "🔥 TokenBurn: show the status bar (today)",
+                "🔥 TokenBurn: status bar → this week",
+                "🔥 TokenBurn: status bar → this month",
+                "🔥 TokenBurn: status bar → this year",
+                "🔥 TokenBurn: status bar → all time",
+                "🔥 TokenBurn: pause the status bar",
+            ]
+        );
+        assert_eq!(actions[4]["arguments"], json!(["week"]));
 
         h.request(
             3,
             "workspace/executeCommand",
-            json!({ "command": CMD_CYCLE }),
+            json!({ "command": CMD_PERIOD, "arguments": ["week"] }),
         );
         assert_eq!(h.progress()["value"]["message"], "🔥 42 [week]");
 
@@ -889,7 +1014,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            5
+            9
         );
         assert_eq!(h.request(3, "textDocument/codeAction", at(7)), json!([]));
         h.notify(
@@ -902,7 +1027,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .len(),
-            5
+            9
         );
         h.stop();
     }
@@ -1031,7 +1156,7 @@ mod tests {
         h.request(
             3,
             "workspace/executeCommand",
-            json!({ "command": CMD_CYCLE }),
+            json!({ "command": CMD_PERIOD, "arguments": ["week"] }),
         );
         std::thread::sleep(Duration::from_millis(200));
         while let Ok(m) = h.client.receiver.try_recv() {
@@ -1041,6 +1166,131 @@ mod tests {
             );
         }
         h.stop();
+    }
+
+    #[test]
+    fn the_line_flashes_then_goes_away() {
+        let h = Harness::start_flashing(true, Value::Null, Duration::from_millis(150));
+        let token = h.accept_create();
+        assert_eq!(h.progress()["value"]["kind"], "begin");
+        let end = h.progress();
+        assert_eq!(
+            (end["token"].as_str(), end["value"]["kind"].as_str()),
+            (Some(token.as_str()), Some("end")),
+            "the progress (and Zed's spinner) goes away"
+        );
+        h.stop();
+    }
+
+    #[test]
+    fn picking_a_period_flashes_it() {
+        let h = Harness::start_flashing(true, Value::Null, Duration::from_millis(150));
+        let first = h.accept_create();
+        let _ = h.progress();
+        assert_eq!(h.progress()["value"]["kind"], "end");
+
+        h.request(
+            2,
+            "workspace/executeCommand",
+            json!({ "command": CMD_PERIOD, "arguments": ["month"] }),
+        );
+        let second = h.accept_create();
+        assert_ne!(first, second, "an ended token is not reused");
+        let begin = h.progress();
+        assert_eq!(begin["value"]["kind"], "begin");
+        assert_eq!(begin["value"]["message"], "🔥 42 [month]");
+        assert_eq!(h.progress()["value"]["kind"], "end");
+        h.stop();
+    }
+
+    #[test]
+    fn a_period_needs_a_valid_argument() {
+        let h = Harness::start(true, Value::Null);
+        h.accept_create();
+        let _ = h.progress();
+        for (id, args) in [(2, json!(["fortnight"])), (3, json!([]))] {
+            h.client
+                .sender
+                .send(
+                    Request::new(
+                        id.into(),
+                        "workspace/executeCommand".into(),
+                        json!({ "command": CMD_PERIOD, "arguments": args }),
+                    )
+                    .into(),
+                )
+                .unwrap();
+            match h.recv_skip_logs() {
+                Message::Response(r) => {
+                    let e = r.response_result.expect_err("an error");
+                    assert_eq!(e.code, ErrorCode::InvalidParams as i32, "{args}");
+                }
+                other => panic!("expected a response, got {other:?}"),
+            }
+        }
+        h.stop();
+    }
+
+    #[test]
+    fn a_flash_shows_the_next_line_and_its_updates_then_nothing() {
+        let t0 = Instant::now();
+        let mut f = Flash::new(Duration::from_secs(6));
+        assert!(f.on_line(t0, true, Level::Ok), "the first line flashes");
+        assert!(
+            f.on_line(t0 + Duration::from_secs(3), true, Level::Ok),
+            "updates show"
+        );
+        assert_eq!(f.wait(t0 + Duration::from_secs(4)), Duration::from_secs(2));
+        assert!(!f.expired(t0 + Duration::from_secs(5)));
+        assert!(f.expired(t0 + Duration::from_secs(6)));
+        assert!(!f.expired(t0 + Duration::from_secs(7)), "it ends once");
+        assert!(
+            !f.on_line(t0 + Duration::from_secs(10), true, Level::Ok),
+            "refreshes stay quiet"
+        );
+        assert_eq!(f.wait(t0), Duration::from_secs(3600));
+
+        f.request();
+        assert!(
+            f.on_line(t0 + Duration::from_secs(20), true, Level::Ok),
+            "a request flashes"
+        );
+    }
+
+    #[test]
+    fn a_new_budget_alert_flashes_once() {
+        let t0 = Instant::now();
+        let later = |s| t0 + Duration::from_secs(s);
+        let mut f = Flash::new(Duration::from_secs(6));
+        f.on_line(t0, true, Level::Ok);
+        assert!(f.expired(later(6)));
+        assert!(f.on_line(later(10), true, Level::Warn), "warning reached");
+        assert!(f.expired(later(16)));
+        assert!(
+            !f.on_line(later(20), true, Level::Warn),
+            "still a warning: quiet"
+        );
+        assert!(f.on_line(later(30), true, Level::Over), "over the budget");
+        assert!(f.expired(later(36)));
+        assert!(!f.on_line(later(40), true, Level::Ok), "back to ok: quiet");
+    }
+
+    #[test]
+    fn pausing_ends_a_flash_and_keeps_a_request_for_later() {
+        let t0 = Instant::now();
+        let mut f = Flash::new(Duration::from_secs(6));
+        assert!(f.on_line(t0, true, Level::Ok));
+        assert!(!f.on_line(t0, false, Level::Ok), "paused: nothing to show");
+        assert!(
+            !f.expired(t0 + Duration::from_secs(9)),
+            "nothing left to end"
+        );
+        f.request();
+        assert!(!f.on_line(t0, false, Level::Ok));
+        assert!(
+            f.on_line(t0, true, Level::Ok),
+            "the request waits for a line"
+        );
     }
 
     #[test]

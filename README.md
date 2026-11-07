@@ -27,8 +27,9 @@ Amp, Cline, Roo Code, Kilo Code and Qwen Code** through
 
 ## In action
 
-**Status bar.** The line stays up to date while you work; `cmd-.` on line 1 switches
-the period (here: today → week).
+**Status bar.** The line flashes for a few seconds when Zed starts, when you pick a
+period or ask for it (`cmd-.` on line 1), and when a budget alert is reached. Zed
+draws a spinner next to any language-server progress, so it doesn't stay up.
 
 ![TokenBurn in Zed's status bar](docs/media/statusbar.gif)
 
@@ -48,8 +49,8 @@ numbers.
 
 | | |
 |---|---|
-| **Status bar** | `🔥 tokens (cost) [period] · burn rate · cache hit · ~saved`, refreshed every 10 s, only re-parsing files that changed. Turns into `🔥 ⚠ …` near a budget and `🔥 OVER BUDGET …` past it |
-| **Periods** | last hour, today, this week (Monday start), month, year, all time — set it in the settings or cycle it with a code action |
+| **Status bar** | `🔥 tokens (cost) [period] · burn rate · cache hit · ~saved`, flashed for 6 s on start, on request and on budget alerts; refreshed every 10 s in the background, only re-parsing files that changed. Turns into `🔥 ⚠ …` near a budget and `🔥 OVER BUDGET …` past it |
+| **Periods** | last hour, today, this week (Monday start), month, year, all time — set it in the settings or pick today / week / month / year / all with a code action |
 | **Budgets & limits** | daily / weekly / monthly **token** budgets (Zed settings) and **dollar** limits (shared with every TokenBurn front-end), each alerting once per period as a Zed notification, with a linear forecast ("at this pace it runs out Thu 14:05") |
 | **Dashboards** | code actions open tokenburn's own **Rust dashboards** on the status bar's view — the native Iced desktop app (`tokenburn-gui`) or the live web dashboard (`tokenburn-web`, opened in your browser): interactive animated charts, click-to-drill-down, 43 themes, limits and savings panels |
 | **Report** | a code action opens a markdown report in a tab: usage for every period, budgets, daily / weekly / monthly charts, usage by tool and by project, savings by source |
@@ -140,12 +141,13 @@ just dev    # installs tokenburn-zed, builds both wasm modules
 | 🔥 TokenBurn: open usage report | writes `~/Library/Caches/tokenburn/zed-report.md` (`~/.cache/…` on Linux) and opens it |
 | 🔥 TokenBurn: open the desktop dashboard | starts `tokenburn-gui` (shown when it is installed) |
 | 🔥 TokenBurn: open the web dashboard | starts `tokenburn-web` on `127.0.0.1:3000` (or reuses a running one) and opens it in the browser; stopped again when Zed stops the server |
-| 🔥 TokenBurn: status bar → week (now today) | cycles today → week → month → year → all → hour |
+| 🔥 TokenBurn: show the status bar (today) | refreshes and flashes the line |
+| 🔥 TokenBurn: status bar → this week / this month / this year / all time / today | switches the period (the current one is left out) and flashes the line |
 | 🔥 TokenBurn: pause / resume the status bar | paused = nothing read in the background |
 
 They are offered on the first line only because Zed puts a ⚡ button on every line
 that has code actions; `"code_actions": "everywhere"` offers them on every line,
-`"off"` (or `false`) not at all. Cycling and pausing last until Zed restarts the server
+`"off"` (or `false`) not at all. A picked period and pausing last until Zed restarts the server
 or the settings change; put permanent choices in the settings.
 
 **Agent panel**: install *TokenBurn MCP Server*, enable it (Agent settings → MCP

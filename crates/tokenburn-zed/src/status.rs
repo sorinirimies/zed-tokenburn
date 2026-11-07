@@ -1,9 +1,9 @@
 //! The status-bar text.
 //!
 //! Zed has no extension API for status-bar items, but it shows language-server
-//! progress there. The language server keeps one progress open for its whole
-//! life, titled `TokenBurn`, and puts this text in its message — so the bottom of
-//! the window reads
+//! progress there. The language server opens a progress titled `TokenBurn` for a
+//! few seconds at a time (see [`crate::lsp::Flash`]) and puts this text in its
+//! message — so the bottom of the window reads
 //!
 //! ```text
 //! TokenBurn: 🔥 1.20M ($5.10) [today] · 52.4k/h · 95% hit · ~$12.40 saved

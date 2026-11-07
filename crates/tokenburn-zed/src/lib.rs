@@ -8,7 +8,7 @@
 //!   the bottom of the window (`TokenBurn: 🔥 1.20M ($5.10) [today] · …`). Budget
 //!   alerts become Zed notifications; code actions open the full report, start
 //!   tokenburn's desktop (`tokenburn-gui`) or web (`tokenburn-web`) dashboard,
-//!   cycle the period and pause.
+//!   show the status line, pick its period and pause.
 //! * `tokenburn-zed mcp` — an MCP server (the extension's context server) with
 //!   read-only tools for Zed's agent: usage, report, chart, breakdown, budgets.
 //! * `tokenburn-zed status|report` — the same numbers on the terminal.

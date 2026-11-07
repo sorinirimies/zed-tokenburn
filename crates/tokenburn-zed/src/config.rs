@@ -146,7 +146,7 @@ pub struct Config {
     pub notify: bool,
     /// Also send an OS desktop notification for the shared dollar limits.
     pub desktop_notifications: bool,
-    /// Where to offer the TokenBurn code actions (report, cycle period, pause).
+    /// Where to offer the TokenBurn code actions (report, status line, period, pause).
     pub code_actions: CodeActions,
     /// The tokenburn GUI / web dashboards the code actions open.
     pub dashboard: crate::dashboard::DashboardConfig,

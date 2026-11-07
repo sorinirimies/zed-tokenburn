@@ -158,7 +158,7 @@
         }
       ],
       "default": "first_line",
-      "description": "Where the TokenBurn code actions (report, cycle period, pause) are offered: only on line 1 (default — Zed shows a ⚡ wherever actions exist), everywhere, or off."
+      "description": "Where the TokenBurn code actions (report, status line, period, pause) are offered: only on line 1 (default — Zed shows a ⚡ wherever actions exist), everywhere, or off."
     },
     "dashboard": {
       "type": "object",
