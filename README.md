@@ -108,7 +108,22 @@ MCP server set `binary_path`, below — a context server has no PATH to search):
 cargo install tokenburn-zed
 ```
 
-From source (dev extensions):
+From source (dev extensions), on each machine:
+
+```sh
+git clone https://github.com/sorinirimies/zed-tokenburn && cd zed-tokenburn
+just setup  # or: nu scripts/setup.nu
+```
+
+`setup` installs `tokenburn-zed` from crates.io (the GitHub release when cargo is
+missing or the install fails; `--from github` skips crates.io, `--version X` pins
+one), builds both extensions and links them into Zed as dev extensions, then prints
+the MCP `binary_path` setting. Restart Zed afterwards. On Windows, or with
+`--no-link`, it prints the Zed steps instead. An extension installed from the
+registry is never replaced; uninstall it first. Run it again after `git pull` to
+update.
+
+By hand:
 
 ```sh
 just dev    # installs tokenburn-zed, builds both wasm modules

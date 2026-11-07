@@ -70,6 +70,10 @@ install-dashboards:
 mcp:
     cargo run -q -p tokenburn-zed -- mcp
 
+# Set up this machine: tokenburn-zed (crates.io, GitHub as fallback) and both extensions linked into Zed
+setup *args:
+    nu scripts/setup.nu {{ args }}
+
 # Try it in Zed: install the server and build both extensions, then follow the printed steps
 dev: install-server build-ext
     @print $"✅ Now in Zed: command palette → 'zed: install dev extension' → pick (pwd)\n   Open any file; the status bar shows 'TokenBurn: 🔥 …'.\n   For the agent tools, install (pwd)/mcp too and set\n   context_servers.tokenburn.settings.binary_path to (which tokenburn-zed | get path.0? | default '~/.cargo/bin/tokenburn-zed')"
