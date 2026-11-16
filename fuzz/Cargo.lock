@@ -795,9 +795,9 @@ checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "tokenburn-core"
-version = "0.3.15"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e7ac405c3ee713bb2c1ac1f537a77dbe97f98171b01baaeec59718a24f198ec"
+checksum = "75f22801e836d0c4553ef65a93dbf94fb58e608b179e8fd9447912b1a8857930"
 dependencies = [
  "anyhow",
  "chrono",
