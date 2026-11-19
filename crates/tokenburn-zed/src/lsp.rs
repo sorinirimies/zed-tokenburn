@@ -1,13 +1,19 @@
 //! The language server: Zed's way to get text into its status bar.
 //!
-//! Zed extensions cannot add status-bar items, but Zed shows a language server's
-//! work-done progress at the bottom of the window, always with a spinner. So the
-//! line *flashes*: this server opens a progress (`window/workDoneProgress/create`,
-//! then `$/progress` *begin*) titled `TokenBurn`, updates it with `report`, and
-//! ends it after [`FLASH`]. It flashes on start, when the settings change, when
-//! the user picks a period or asks to see it, and when a budget alert is reached
-//! (see [`Flash`]). Alerts also become `window/showMessage` notifications.
+//! Zed extensions cannot add status-bar items, but Zed's activity indicator shows
+//! two things for a language server, and this server uses both so the line is
+//! *always* there and the spinner turns *only while data is being read*:
 //!
+//! * **idle**: the last line as the server's health message
+//!   (`experimental/serverStatus`, no spinner). It is re-sent on every refresh,
+//!   because clicking the indicator dismisses it.
+//! * **fetching**: a work-done progress (`window/workDoneProgress/create`, then
+//!   `$/progress` *begin*) titled `TokenBurn`, which Zed draws with a spinner and
+//!   which takes precedence over the health message. It opens when a read starts
+//!   and ends when it is done, but is held for [`MIN_SPIN`] so a quick read is
+//!   still seen (see [`Spin`]).
+//!
+//! Budget alerts become `window/showMessage` notifications.
 //! Interaction, since extensions cannot add commands either, is through code
 //! actions (`cmd-.` / `ctrl-.` in any buffer): open the report, show the status,
 //! pick its period, pause/resume. They run as `workspace/executeCommand`.
@@ -35,14 +41,18 @@ use crate::span::Span;
 /// The progress title: Zed shows `TokenBurn: <line>`.
 pub const TITLE: &str = "TokenBurn";
 
-/// How long the status line stays up after a flash starts.
-pub const FLASH: Duration = Duration::from_secs(6);
+/// The least time the spinner stays up once a read started, so that a read
+/// served from the cache is still visible.
+pub const MIN_SPIN: Duration = Duration::from_millis(1200);
+
+/// Progress text before the first line exists.
+const LOADING: &str = "loading…";
 
 pub const CMD_REPORT: &str = "tokenburn.openReport";
 /// Takes the period (`today`, `week`, …) as its one argument.
 pub const CMD_PERIOD: &str = "tokenburn.setPeriod";
 pub const CMD_PAUSE: &str = "tokenburn.togglePause";
-/// Refreshes and flashes the status line.
+/// Reads the data again (the spinner turns while it does).
 pub const CMD_REFRESH: &str = "tokenburn.refresh";
 pub const CMD_GUI: &str = "tokenburn.openDesktopDashboard";
 pub const CMD_WEB: &str = "tokenburn.openWebDashboard";
@@ -101,6 +111,8 @@ impl Dashboards {
 /// Messages from the background threads to the main loop.
 #[derive(Debug)]
 pub enum Event {
+    /// A read of the logs started.
+    Fetching,
     Snapshot(Snapshot),
     Report(Result<PathBuf, String>),
     /// The web dashboard is up (URL, and the process if this server started it).
@@ -119,8 +131,12 @@ enum Cmd {
 
 /// Run the refresh loop: a snapshot now, then every `refresh_secs`, or at once
 /// after a config change. While disabled it waits without reading anything.
+/// Each read is announced with [`Event::Fetching`] so the spinner can follow it.
 fn refresh_loop(mut cfg: Config, cmds: Receiver<Cmd>, events: Sender<Event>, refresh: Refresher) {
     loop {
+        if cfg.enabled && events.send(Event::Fetching).is_err() {
+            return;
+        }
         let snap = refresh(&cfg);
         if events.send(Event::Snapshot(snap)).is_err() {
             return;
@@ -162,67 +178,56 @@ struct Overrides {
     paused: Option<bool>,
 }
 
-/// When the status line is up. Zed draws a spinner next to any open progress,
-/// so the line shows for a while after something worth seeing, then goes away.
+/// When the spinner (an open progress) is up: while data is being read, and for
+/// at least `min` after it started, so a read served from the cache is seen too.
 #[derive(Debug)]
-pub struct Flash {
-    /// How long a flash lasts.
-    duration: Duration,
-    /// The line is up until then.
+pub struct Spin {
+    min: Duration,
+    fetching: bool,
+    /// The spinner stays up until then, even when the read is done.
     until: Option<Instant>,
-    /// The next line should flash (start, settings, a user action).
-    pending: bool,
-    /// The budget level of the last line.
-    level: Level,
 }
 
-impl Flash {
-    /// A flash of `duration`, with the first line pending.
-    pub fn new(duration: Duration) -> Self {
+impl Spin {
+    /// A spinner held for at least `min` per read.
+    pub fn new(min: Duration) -> Self {
         Self {
-            duration,
+            min,
+            fetching: false,
             until: None,
-            pending: true,
-            level: Level::Ok,
         }
     }
 
-    /// Flash the next line.
-    pub fn request(&mut self) {
-        self.pending = true;
+    /// A read started.
+    pub fn start(&mut self, now: Instant) {
+        self.fetching = true;
+        self.until = Some(now + self.min);
     }
 
-    /// A new line arrived (`None` while paused). Returns whether it is shown.
-    ///
-    /// It starts a flash when one was requested or the budget level rose to a
-    /// warning or over; during a flash the line just updates.
-    pub fn on_line(&mut self, now: Instant, line: bool, level: Level) -> bool {
-        let alert = level != Level::Ok && level != self.level;
-        self.level = level;
-        if !line {
-            self.until = None;
-            return false;
-        }
-        if std::mem::take(&mut self.pending) || alert {
-            self.until = Some(now + self.duration);
-        }
-        self.until.is_some()
+    /// The read is done; the spinner still runs out its minimum.
+    pub fn finish(&mut self) {
+        self.fetching = false;
     }
 
-    /// Whether the flash is over at `now`; it ends once.
-    pub fn expired(&mut self, now: Instant) -> bool {
-        let over = self.until.is_some_and(|t| now >= t);
-        if over {
-            self.until = None;
-        }
-        over
+    /// Nothing is being read any more (paused): stop at once.
+    pub fn stop(&mut self) {
+        self.fetching = false;
+        self.until = None;
     }
 
-    /// How long the main loop may wait before the flash ends.
+    /// Is the spinner up at `now`?
+    pub fn active(&self, now: Instant) -> bool {
+        self.fetching || self.until.is_some_and(|t| now < t)
+    }
+
+    /// How long the main loop may wait before the spinner has to stop.
     pub fn wait(&self, now: Instant) -> Duration {
-        self.until.map_or(Duration::from_secs(3600), |t| {
-            t.saturating_duration_since(now)
-        })
+        const IDLE: Duration = Duration::from_secs(3600);
+        if self.fetching {
+            return IDLE;
+        }
+        // A deadline that has passed must not make the loop spin.
+        self.until.filter(|t| *t > now).map_or(IDLE, |t| t - now)
     }
 }
 
@@ -234,7 +239,9 @@ pub struct Server {
     settings: Value,
     overrides: Overrides,
     progress: Progress,
-    flash: Flash,
+    spin: Spin,
+    /// The last line read (`None` before the first read and while paused).
+    last_line: Option<String>,
     next_id: i32,
     cmds: Sender<Cmd>,
     events_tx: Sender<Event>,
@@ -320,7 +327,27 @@ impl Server {
         self.notify("window/logMessage", json!({ "type": 3, "message": text }));
     }
 
-    // ── status bar ───────────────────────────────────────────────────────────
+    // ── status bar ────────────────────────────────────────────────────────────────────────
+
+    /// The line as the server's health message: what Zed shows while nothing is
+    /// being read (no spinner). `None` clears it (paused). Sent on every refresh,
+    /// as clicking Zed's indicator dismisses it.
+    fn show_idle(&self, line: Option<&str>) {
+        self.notify(
+            "experimental/serverStatus",
+            json!({ "health": "ok", "quiescent": true, "message": line }),
+        );
+    }
+
+    /// Open, update or end the spinner so it follows [`Spin`].
+    fn sync_progress(&mut self) {
+        let text = self.spin.active(Instant::now()).then(|| {
+            self.last_line
+                .clone()
+                .unwrap_or_else(|| LOADING.to_string())
+        });
+        self.set_status(text);
+    }
 
     fn set_status(&mut self, text: Option<String>) {
         if !self.progress.supported {
@@ -390,11 +417,15 @@ impl Server {
 
     pub fn on_event(&mut self, ev: Event) {
         match ev {
+            Event::Fetching => self.spin.start(Instant::now()),
             Event::Snapshot(snap) => {
-                let shown = self
-                    .flash
-                    .on_line(Instant::now(), snap.status.is_some(), snap.level);
-                self.set_status(snap.status.filter(|_| shown));
+                if snap.status.is_some() {
+                    self.spin.finish();
+                } else {
+                    self.spin.stop();
+                }
+                self.show_idle(snap.status.as_deref());
+                self.last_line = snap.status;
                 for n in &snap.notices {
                     self.show_message(n.level, &notice_text(n));
                 }
@@ -440,7 +471,6 @@ impl Server {
                 "workspace/didChangeConfiguration" => {
                     self.settings = n.params.get("settings").cloned().unwrap_or(Value::Null);
                     self.overrides = Overrides::default();
-                    self.flash.request();
                     self.config_changed();
                 }
                 _ => {}
@@ -560,19 +590,14 @@ impl Server {
                     .and_then(str::parse::<Span>)
                     .map_err(|e| (ErrorCode::InvalidParams, e))?;
                 self.overrides.period = Some(span);
-                self.flash.request();
                 self.config_changed();
             }
             CMD_PAUSE => {
                 let resume = !self.config().enabled;
                 self.overrides.paused = Some(!resume);
-                if resume {
-                    self.flash.request();
-                }
                 self.config_changed();
             }
             CMD_REFRESH => {
-                self.flash.request();
                 let _ = self.cmds.send(Cmd::Refresh);
             }
             other => {
@@ -609,16 +634,16 @@ pub fn serve(
     report: ReportWriter,
     dashboards: Dashboards,
 ) -> Result<()> {
-    serve_flashing(conn, refresh, report, dashboards, FLASH)
+    serve_spinning(conn, refresh, report, dashboards, MIN_SPIN)
 }
 
-/// [`serve`] with a given flash length (tests use a short one).
-fn serve_flashing(
+/// [`serve`] with a given minimum spinner time (tests use a short or a long one).
+fn serve_spinning(
     conn: Connection,
     refresh: Refresher,
     report: ReportWriter,
     dashboards: Dashboards,
-    flash: Duration,
+    min_spin: Duration,
 ) -> Result<()> {
     let (id, params) = conn.initialize_start()?;
     conn.initialize_finish(id, capabilities())?;
@@ -640,7 +665,8 @@ fn serve_flashing(
                 .unwrap_or(false),
             ..Default::default()
         },
-        flash: Flash::new(flash),
+        spin: Spin::new(min_spin),
+        last_line: None,
         next_id: 0,
         cmds: cmds_tx,
         events_tx: events_tx.clone(),
@@ -657,7 +683,7 @@ fn serve_flashing(
     let worker = std::thread::spawn(move || refresh_loop(first, cmds_rx, events_tx, refresh));
 
     loop {
-        let wait = server.flash.wait(Instant::now());
+        let wait = server.spin.wait(Instant::now());
         select! {
             recv(conn.receiver) -> msg => match msg {
                 Ok(msg) => if !server.on_message(msg) { break },
@@ -666,9 +692,7 @@ fn serve_flashing(
             recv(events_rx) -> ev => if let Ok(ev) = ev { server.on_event(ev) },
             default(wait) => {},
         }
-        if server.flash.expired(Instant::now()) {
-            server.set_status(None);
-        }
+        server.sync_progress();
     }
     let _ = server.cmds.send(Cmd::Stop);
     drop(server);
@@ -727,15 +751,17 @@ mod tests {
         thread: Option<std::thread::JoinHandle<()>>,
         refreshes: Arc<AtomicUsize>,
         logs: std::cell::RefCell<Vec<String>>,
+        /// The `message` of every `experimental/serverStatus` seen (`null` = cleared).
+        idle: std::cell::RefCell<Vec<Value>>,
     }
 
     impl Harness {
-        /// A server whose flash outlasts every test.
+        /// A server whose spinner outlasts every test.
         fn start(progress: bool, init: Value) -> Self {
-            Self::start_flashing(progress, init, Duration::from_secs(60))
+            Self::start_spinning(progress, init, Duration::from_secs(60))
         }
 
-        fn start_flashing(progress: bool, init: Value, flash: Duration) -> Self {
+        fn start_spinning(progress: bool, init: Value, min_spin: Duration) -> Self {
             let (server, client) = Connection::memory();
             let refreshes = Arc::new(AtomicUsize::new(0));
             let count = refreshes.clone();
@@ -765,7 +791,7 @@ mod tests {
                 web: Arc::new(|cfg: &Config| Ok((crate::dashboard::web_url(4321, cfg), None))),
             };
             let thread = std::thread::spawn(move || {
-                serve_flashing(server, refresh, report, dashboards, flash).unwrap()
+                serve_spinning(server, refresh, report, dashboards, min_spin).unwrap()
             });
             client
                 .sender
@@ -786,6 +812,7 @@ mod tests {
                 thread: Some(thread),
                 refreshes,
                 logs: Default::default(),
+                idle: Default::default(),
             };
             let init = h.recv();
             assert!(matches!(init, Message::Response(ref r) if r.id == 1.into()));
@@ -800,10 +827,14 @@ mod tests {
                 .expect("a message from the server")
         }
 
-        /// Next message that is not a log line.
+        /// Next message that is not a log line or an idle status (both recorded).
         fn recv_skip_logs(&self) -> Message {
             loop {
                 match self.recv() {
+                    Message::Notification(n) if n.method == "experimental/serverStatus" => {
+                        assert_eq!(n.params["health"], "ok");
+                        self.idle.borrow_mut().push(n.params["message"].clone());
+                    }
                     Message::Notification(n) if n.method == "window/logMessage" => {
                         let text = n.params["message"].as_str().unwrap_or("").to_string();
                         self.logs.borrow_mut().push(text);
@@ -848,6 +879,25 @@ mod tests {
             }
         }
 
+        /// Accept the `create`, then read progress until it shows `message`;
+        /// returns the token. (The first text may be `loading…` if the read
+        /// has not finished when the progress opens.)
+        fn ready(&self, message: &str) -> String {
+            let token = self.accept_create();
+            self.progress_until(message);
+            token
+        }
+
+        /// Progress notifications until one carries `message`.
+        fn progress_until(&self, message: &str) -> Value {
+            loop {
+                let p = self.progress();
+                if p["value"]["message"] == message {
+                    return p;
+                }
+            }
+        }
+
         fn progress(&self) -> Value {
             match self.recv_skip_logs() {
                 Message::Notification(n) if n.method == "$/progress" => n.params,
@@ -870,10 +920,15 @@ mod tests {
         assert_eq!(begin["token"], token);
         assert_eq!(begin["value"]["kind"], "begin");
         assert_eq!(begin["value"]["title"], TITLE);
-        assert_eq!(
-            begin["value"]["message"], "🔥 42 [week]",
-            "init options apply"
-        );
+        // The read may still be running when the progress opens (`loading…`).
+        if begin["value"]["message"] == LOADING {
+            h.progress_until("🔥 42 [week]");
+        } else {
+            assert_eq!(
+                begin["value"]["message"], "🔥 42 [week]",
+                "init options apply"
+            );
+        }
 
         // Settings from Zed win over the init options and refresh at once.
         h.notify(
@@ -889,8 +944,7 @@ mod tests {
     #[test]
     fn warnings_are_logged_once() {
         let h = Harness::start(true, Value::Null);
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         h.request(
             5,
             "workspace/executeCommand",
@@ -915,8 +969,7 @@ mod tests {
     #[test]
     fn code_actions_pick_the_period_and_pause() {
         let h = Harness::start(true, Value::Null);
-        let token = h.accept_create();
-        assert_eq!(h.progress()["value"]["message"], "🔥 42 [today]");
+        let token = h.ready("🔥 42 [today]");
 
         let doc = json!({ "textDocument": { "uri": "file:///a.rs" },
             "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
@@ -980,8 +1033,7 @@ mod tests {
     #[test]
     fn restricted_code_action_requests_get_nothing() {
         let h = Harness::start(true, Value::Null);
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         let only = json!({ "textDocument": { "uri": "file:///a.rs" },
             "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 0 } },
             "context": { "diagnostics": [], "only": ["source.organizeImports"] } });
@@ -992,8 +1044,7 @@ mod tests {
     #[test]
     fn code_actions_can_be_switched_off() {
         let h = Harness::start(true, json!({ "code_actions": false }));
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         let doc = json!({ "context": { "diagnostics": [] } });
         assert_eq!(h.request(2, "textDocument/codeAction", doc), json!([]));
         h.stop();
@@ -1002,8 +1053,7 @@ mod tests {
     #[test]
     fn code_actions_live_on_the_first_line_by_default() {
         let h = Harness::start(true, Value::Null);
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         let at = |line: u64| {
             json!({ "textDocument": { "uri": "file:///a.rs" },
             "range": { "start": { "line": line, "character": 0 }, "end": { "line": line, "character": 0 } },
@@ -1035,8 +1085,7 @@ mod tests {
     #[test]
     fn open_report_shows_the_document() {
         let h = Harness::start(true, Value::Null);
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         h.request(
             2,
             "workspace/executeCommand",
@@ -1056,8 +1105,7 @@ mod tests {
     #[test]
     fn dashboards_open_in_the_browser_or_report_why_not() {
         let h = Harness::start(true, json!({ "period": "month", "tool": "pi" }));
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [month]");
         // The GUI is "missing" for tool=pi in this fake, so no action is offered…
         let doc = json!({ "context": { "diagnostics": [] } });
         let titles = h.request(2, "textDocument/codeAction", doc);
@@ -1169,25 +1217,71 @@ mod tests {
     }
 
     #[test]
-    fn the_line_flashes_then_goes_away() {
-        let h = Harness::start_flashing(true, Value::Null, Duration::from_millis(150));
+    fn the_spinner_turns_while_fetching_and_the_line_stays() {
+        let h = Harness::start_spinning(true, Value::Null, Duration::from_millis(150));
         let token = h.accept_create();
         assert_eq!(h.progress()["value"]["kind"], "begin");
-        let end = h.progress();
+        let mut end = h.progress();
+        while end["value"]["kind"] != "end" {
+            end = h.progress(); // a `report` from `loading\u2026` to the line
+        }
         assert_eq!(
             (end["token"].as_str(), end["value"]["kind"].as_str()),
             (Some(token.as_str()), Some("end")),
             "the progress (and Zed's spinner) goes away"
         );
+        // The line itself stays, as the idle health message, without a spinner.
+        assert!(
+            h.idle.borrow().contains(&json!("🔥 42 [today]")),
+            "{:?}",
+            h.idle
+        );
         h.stop();
     }
 
     #[test]
-    fn picking_a_period_flashes_it() {
-        let h = Harness::start_flashing(true, Value::Null, Duration::from_millis(150));
-        let first = h.accept_create();
-        let _ = h.progress();
+    fn the_idle_line_is_sent_on_every_refresh_and_cleared_when_paused() {
+        let h = Harness::start(true, Value::Null);
+        h.ready("🔥 42 [today]");
+        h.request(
+            2,
+            "workspace/executeCommand",
+            json!({ "command": CMD_REFRESH }),
+        );
+        h.request(
+            3,
+            "workspace/executeCommand",
+            json!({ "command": CMD_PAUSE }),
+        );
         assert_eq!(h.progress()["value"]["kind"], "end");
+        // Two reads and the pause, each a status; a click in Zed dismisses one,
+        // so the next refresh has to put it back.
+        std::thread::sleep(Duration::from_millis(300));
+        while let Ok(m) = h.client.receiver.try_recv() {
+            if let Message::Notification(n) = m {
+                if n.method == "experimental/serverStatus" {
+                    h.idle.borrow_mut().push(n.params["message"].clone());
+                }
+            }
+        }
+        let idle = h.idle.borrow().clone();
+        assert!(
+            idle.iter().filter(|m| **m == "🔥 42 [today]").count() >= 2,
+            "{idle:?}"
+        );
+        assert_eq!(idle.last(), Some(&Value::Null), "paused: cleared");
+        h.stop();
+    }
+
+    #[test]
+    fn picking_a_period_spins_again_and_shows_it() {
+        let h = Harness::start_spinning(true, Value::Null, Duration::from_millis(150));
+        let first = h.accept_create();
+        loop {
+            if h.progress()["value"]["kind"] == "end" {
+                break;
+            }
+        }
 
         h.request(
             2,
@@ -1196,18 +1290,22 @@ mod tests {
         );
         let second = h.accept_create();
         assert_ne!(first, second, "an ended token is not reused");
-        let begin = h.progress();
-        assert_eq!(begin["value"]["kind"], "begin");
-        assert_eq!(begin["value"]["message"], "🔥 42 [month]");
-        assert_eq!(h.progress()["value"]["kind"], "end");
+        let mut last = Value::Null;
+        loop {
+            let p = h.progress();
+            if p["value"]["kind"] == "end" {
+                break;
+            }
+            last = p["value"]["message"].clone();
+        }
+        assert_eq!(last, "🔥 42 [month]");
         h.stop();
     }
 
     #[test]
     fn a_period_needs_a_valid_argument() {
         let h = Harness::start(true, Value::Null);
-        h.accept_create();
-        let _ = h.progress();
+        h.ready("🔥 42 [today]");
         for (id, args) in [(2, json!(["fortnight"])), (3, json!([]))] {
             h.client
                 .sender
@@ -1232,65 +1330,39 @@ mod tests {
     }
 
     #[test]
-    fn a_flash_shows_the_next_line_and_its_updates_then_nothing() {
+    fn the_spinner_runs_while_fetching_and_a_little_after() {
         let t0 = Instant::now();
-        let mut f = Flash::new(Duration::from_secs(6));
-        assert!(f.on_line(t0, true, Level::Ok), "the first line flashes");
-        assert!(
-            f.on_line(t0 + Duration::from_secs(3), true, Level::Ok),
-            "updates show"
-        );
-        assert_eq!(f.wait(t0 + Duration::from_secs(4)), Duration::from_secs(2));
-        assert!(!f.expired(t0 + Duration::from_secs(5)));
-        assert!(f.expired(t0 + Duration::from_secs(6)));
-        assert!(!f.expired(t0 + Duration::from_secs(7)), "it ends once");
-        assert!(
-            !f.on_line(t0 + Duration::from_secs(10), true, Level::Ok),
-            "refreshes stay quiet"
-        );
-        assert_eq!(f.wait(t0), Duration::from_secs(3600));
+        let ms = Duration::from_millis;
+        let mut s = Spin::new(ms(800));
+        assert!(!s.active(t0), "idle until the first read");
+        assert_eq!(s.wait(t0), Duration::from_secs(3600));
 
-        f.request();
+        s.start(t0);
         assert!(
-            f.on_line(t0 + Duration::from_secs(20), true, Level::Ok),
-            "a request flashes"
+            s.active(t0 + Duration::from_secs(30)),
+            "as long as it takes"
+        );
+        assert_eq!(s.wait(t0), Duration::from_secs(3600));
+
+        s.finish();
+        assert!(s.active(t0 + ms(500)), "a quick read is still seen");
+        assert_eq!(s.wait(t0 + ms(300)), ms(500));
+        assert!(!s.active(t0 + ms(800)));
+        assert_eq!(
+            s.wait(t0 + ms(900)),
+            Duration::from_secs(3600),
+            "a passed deadline must not make the loop spin"
         );
     }
 
     #[test]
-    fn a_new_budget_alert_flashes_once() {
+    fn pausing_stops_the_spinner_at_once() {
         let t0 = Instant::now();
-        let later = |s| t0 + Duration::from_secs(s);
-        let mut f = Flash::new(Duration::from_secs(6));
-        f.on_line(t0, true, Level::Ok);
-        assert!(f.expired(later(6)));
-        assert!(f.on_line(later(10), true, Level::Warn), "warning reached");
-        assert!(f.expired(later(16)));
-        assert!(
-            !f.on_line(later(20), true, Level::Warn),
-            "still a warning: quiet"
-        );
-        assert!(f.on_line(later(30), true, Level::Over), "over the budget");
-        assert!(f.expired(later(36)));
-        assert!(!f.on_line(later(40), true, Level::Ok), "back to ok: quiet");
-    }
-
-    #[test]
-    fn pausing_ends_a_flash_and_keeps_a_request_for_later() {
-        let t0 = Instant::now();
-        let mut f = Flash::new(Duration::from_secs(6));
-        assert!(f.on_line(t0, true, Level::Ok));
-        assert!(!f.on_line(t0, false, Level::Ok), "paused: nothing to show");
-        assert!(
-            !f.expired(t0 + Duration::from_secs(9)),
-            "nothing left to end"
-        );
-        f.request();
-        assert!(!f.on_line(t0, false, Level::Ok));
-        assert!(
-            f.on_line(t0, true, Level::Ok),
-            "the request waits for a line"
-        );
+        let mut s = Spin::new(Duration::from_secs(5));
+        s.start(t0);
+        s.stop();
+        assert!(!s.active(t0));
+        assert_eq!(s.wait(t0), Duration::from_secs(3600));
     }
 
     #[test]

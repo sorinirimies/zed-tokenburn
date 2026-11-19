@@ -148,25 +148,38 @@ fn the_language_server_shows_the_line_as_progress() {
     lsp.send(json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} }));
 
     let deadline = Instant::now() + Duration::from_secs(30);
-    let mut message = None;
-    while message.is_none() && Instant::now() < deadline {
+    // While the logs are read the line is a progress (Zed draws the spinner);
+    // once they are read it stays as the idle health message (no spinner).
+    let mut spinning = None;
+    let mut idle = None;
+    while (spinning.is_none() || idle.is_none()) && Instant::now() < deadline {
         let m = lsp.recv();
         match m["method"].as_str() {
             Some("window/workDoneProgress/create") => {
                 lsp.send(json!({ "jsonrpc": "2.0", "id": m["id"], "result": null }))
             }
-            Some("$/progress") if m["params"]["value"]["kind"] == "begin" => {
-                assert_eq!(m["params"]["value"]["title"], "TokenBurn");
-                message = m["params"]["value"]["message"].as_str().map(String::from);
+            Some("$/progress") => {
+                let v = &m["params"]["value"];
+                if v["kind"] == "begin" {
+                    assert_eq!(v["title"], "TokenBurn");
+                }
+                if let Some(text) = v["message"].as_str().filter(|t| t.starts_with('🔥')) {
+                    spinning = Some(text.to_string());
+                }
+            }
+            Some("experimental/serverStatus") => {
+                assert_eq!(m["params"]["health"], "ok");
+                idle = m["params"]["message"].as_str().map(String::from);
             }
             _ => {}
         }
     }
-    let message = message.expect("a progress begin");
-    assert!(
-        message.starts_with("🔥 1.5k ($0.50) [today · pi]"),
-        "{message}"
-    );
+    for message in [spinning.expect("a progress"), idle.expect("an idle status")] {
+        assert!(
+            message.starts_with("🔥 1.5k ($0.50) [today · pi]"),
+            "{message}"
+        );
+    }
 
     lsp.send(json!({ "jsonrpc": "2.0", "id": 2, "method": "shutdown" }));
     loop {
