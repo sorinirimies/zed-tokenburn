@@ -4,6 +4,30 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
+## [0.1.3](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.2...v0.1.3) — 2026-11-19
+
+### 🐛 Bug fixes
+
+- **status:** Keep the status line always shown; spin only while reading the logs ([`6ae538a`](https://github.com/sorinirimies/zed-tokenburn/commit/6ae538ae28c5af5f30dba21c842c02b16c2ac938))
+
+### 📚 Documentation
+
+- Fix the doc link to the spinner ([`15a0151`](https://github.com/sorinirimies/zed-tokenburn/commit/15a01518bb16b0e58e5f40630985a1bfc71d945a))
+- Describe the always-on status line in the registry PR text ([`02a4ef7`](https://github.com/sorinirimies/zed-tokenburn/commit/02a4ef753ebdb51a60f5b2ef53cf46a0658cd312))
+- Re-record the status bar GIF with the flash and the period picks ([`38620fd`](https://github.com/sorinirimies/zed-tokenburn/commit/38620fd57665db2a9d3206ffa36415fa252c3c21))
+
+### 📦 Dependencies
+
+- Nightly cargo update 2026-11-18 ([`7b28d00`](https://github.com/sorinirimies/zed-tokenburn/commit/7b28d0053af9681eb0eecf5e3825308b7d07b154))
+- Nightly cargo update 2026-11-17 ([`44d5221`](https://github.com/sorinirimies/zed-tokenburn/commit/44d522118863197c1a9215ded7ef3e6eaf00d970))
+- Nightly cargo update 2026-11-16 ([`0326a0a`](https://github.com/sorinirimies/zed-tokenburn/commit/0326a0a46eda6d47e20aadb10e275d3033def3f3))
+- Bump tokenburn-core to 0.4.0 (savings detail) ([`26c9dbf`](https://github.com/sorinirimies/zed-tokenburn/commit/26c9dbf7546d8e16f25c93e7b77d0d7f0b5eb429))
+- Nightly cargo update 2026-11-14 ([`609f053`](https://github.com/sorinirimies/zed-tokenburn/commit/609f0539534e6cdb45847a6f20617ae1acb5a1ab))
+- Nightly cargo update 2026-11-13 ([`5645ea7`](https://github.com/sorinirimies/zed-tokenburn/commit/5645ea716f530a509ae0b590f707902c118fd212))
+- Bump tokenburn-core to 0.3.15 (libsqlite3-sys 0.40, RUSTSEC-2026-0459) ([`fc52f23`](https://github.com/sorinirimies/zed-tokenburn/commit/fc52f23655d95821436e2adb1c22df914ebe379c))
+- Nightly cargo update 2026-11-10 ([`dedacd4`](https://github.com/sorinirimies/zed-tokenburn/commit/dedacd4eaf9e10f88020bcad9ccdfd7e83e5a303))
+- Nightly cargo update 2026-11-09 ([`63aceed`](https://github.com/sorinirimies/zed-tokenburn/commit/63aceed97b617c16aad86f4e22508332e0947cc0))
+
 ## [0.1.2](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.1...v0.1.2) — 2026-11-07
 
 ### ✨ Features
