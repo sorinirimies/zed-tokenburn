@@ -74,9 +74,11 @@ For each: `pnpm sort-extensions`, commit, push, `gh pr create`.
 > guideline: the extension API has no status-bar item or command API, so the extension
 > starts a language server that never reads or edits documents (no diagnostics, no
 > edits, code actions only as plain commands and never for `context.only` requests) and
-> keeps one work-done progress open whose message is the usage line. It is registered
-> for many languages only so it runs whatever file is open. Happy to switch to a
-> status-bar API as soon as one exists.
+> reports the usage line as its status text, which Zed shows in the activity indicator.
+> While it reads the local logs it shows the same line as a work-done progress, so the
+> spinner turns only while data is being read. It is registered for many languages only
+> so it runs whatever file is open. Happy to switch to a status-bar API as soon as one
+> exists.
 >
 > The native server (`tokenburn-zed`, MIT, in the same repository) is downloaded from
 > the GitHub releases, or taken from `PATH` / `lsp.tokenburn.binary.path`; it is not
