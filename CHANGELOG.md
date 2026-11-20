@@ -4,6 +4,12 @@ All notable changes to this project are documented here. It is generated from
 [Conventional Commits](https://www.conventionalcommits.org) by
 [git-cliff](https://git-cliff.org) — do not edit it by hand.
 
+## [0.1.4](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.3...v0.1.4) — 2026-11-20
+
+### 🐛 Bug fixes
+
+- **cost:** Show Zed's cost, estimated from the model price (tokenburn-core 0.4.2) ([`8d1f678`](https://github.com/sorinirimies/zed-tokenburn/commit/8d1f678f4cc358bb0e8ca0bc6111174e9457be1f))
+
 ## [0.1.3](https://github.com/sorinirimies/zed-tokenburn/compare/v0.1.2...v0.1.3) — 2026-11-19
 
 ### 🐛 Bug fixes

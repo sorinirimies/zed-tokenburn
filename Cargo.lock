@@ -1161,7 +1161,7 @@ dependencies = [
 
 [[package]]
 name = "tokenburn-zed"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1693,7 +1693,7 @@ dependencies = [
 
 [[package]]
 name = "zed-tokenburn"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde_json",
  "zed_extension_api",
@@ -1701,7 +1701,7 @@ dependencies = [
 
 [[package]]
 name = "zed-tokenburn-mcp"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "serde_json",
  "zed_extension_api",
