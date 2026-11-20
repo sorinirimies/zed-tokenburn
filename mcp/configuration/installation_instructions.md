@@ -16,4 +16,4 @@ and set `"binary_path": "/path/to/tokenburn-zed"` below.
 
 Tools: `tokenburn_usage`, `tokenburn_report`, `tokenburn_chart`,
 `tokenburn_breakdown`, `tokenburn_budgets`. The settings below are optional and the
-same as the status bar's (`lsp.tokenburn.settings` of the TokenBurn extension).
+same as the status bar's (`lsp.TokenBurn.settings` of the TokenBurn extension).

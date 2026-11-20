@@ -27,7 +27,7 @@ fn non_blank(s: Option<String>) -> Option<String> {
     s.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
-/// Language server: `lsp.tokenburn.binary.path`, then `tokenburn-zed` on the
+/// Language server: `lsp.TokenBurn.binary.path`, then `tokenburn-zed` on the
 /// worktree's PATH, then the release download.
 pub fn lsp_binary(explicit: Option<String>, on_path: Option<String>) -> Binary {
     non_blank(explicit)
@@ -43,6 +43,43 @@ pub fn mcp_binary(settings: Option<&Value>) -> Binary {
         .and_then(Value::as_str)
         .map(str::to_string);
     non_blank(path).map_or(Binary::Download, Binary::Host)
+}
+
+/// The `binary` object of a language server's settings.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Command {
+    pub path: Option<String>,
+    pub arguments: Option<Vec<String>>,
+    pub env: Option<Vec<(String, String)>>,
+}
+
+/// `new` wins field by field; what it leaves out comes from `old`. Used to keep
+/// reading the settings of a language server that was renamed.
+pub fn merge_command(new: Command, old: Command) -> Command {
+    Command {
+        path: new.path.or(old.path),
+        arguments: new.arguments.or(old.arguments),
+        env: new.env.or(old.env),
+    }
+}
+
+/// `new` over `old`: objects are merged key by key (recursively), anything else
+/// in `new` replaces what `old` had, and a side that is missing is the other one.
+pub fn merge_json(new: Option<Value>, old: Option<Value>) -> Option<Value> {
+    match (new, old) {
+        (Some(Value::Object(mut new)), Some(Value::Object(old))) => {
+            for (key, old_value) in old {
+                let merged = match new.remove(&key) {
+                    Some(new_value) => merge_json(Some(new_value), Some(old_value)),
+                    None => Some(old_value),
+                };
+                new.extend(merged.map(|v| (key, v)));
+            }
+            Some(Value::Object(new))
+        }
+        (Some(new), _) => Some(new),
+        (None, old) => old,
+    }
 }
 
 /// Configured arguments, or the default mode.
@@ -170,6 +207,55 @@ mod tests {
     }
 
     #[test]
+    fn the_new_binary_settings_win_field_by_field_over_the_legacy_ones() {
+        let new = Command {
+            path: Some("/new/tokenburn-zed".into()),
+            ..Default::default()
+        };
+        let old = Command {
+            path: Some("/old/tokenburn-zed".into()),
+            arguments: Some(vec!["lsp".into(), "-v".into()]),
+            env: Some(vec![("A".into(), "1".into())]),
+        };
+        let m = merge_command(new, old.clone());
+        assert_eq!(m.path.as_deref(), Some("/new/tokenburn-zed"));
+        assert_eq!(m.arguments, old.arguments, "kept from the legacy id");
+        assert_eq!(m.env, old.env);
+        assert_eq!(merge_command(Command::default(), old.clone()), old);
+        assert_eq!(
+            merge_command(Command::default(), Command::default()),
+            Command::default()
+        );
+    }
+
+    #[test]
+    fn settings_of_both_ids_are_merged_with_the_new_id_winning() {
+        let old = json!({ "period": "week", "budgets": { "day_tokens": 1, "week_cost": 5 }, "tool": "pi" });
+        let new = json!({ "period": "month", "budgets": { "day_tokens": 9 } });
+        assert_eq!(
+            merge_json(Some(new.clone()), Some(old.clone())),
+            Some(json!({
+                "period": "month",
+                "tool": "pi",
+                "budgets": { "day_tokens": 9, "week_cost": 5 }
+            }))
+        );
+        assert_eq!(merge_json(None, Some(old.clone())), Some(old.clone()));
+        assert_eq!(merge_json(Some(new.clone()), None), Some(new.clone()));
+        assert_eq!(merge_json(None, None), None);
+        assert_eq!(
+            merge_json(Some(json!({ "period": null })), Some(old)).unwrap()["period"],
+            Value::Null,
+            "an explicit null in the new id is kept"
+        );
+        assert_eq!(
+            merge_json(Some(json!("x")), Some(json!({ "a": 1 }))),
+            Some(json!("x")),
+            "a non-object replaces"
+        );
+    }
+
+    #[test]
     fn find_asset_or_explain() {
         let names = ["a.tar.gz", "tokenburn-zed-x86_64-apple-darwin.tar.gz"];
         assert_eq!(
@@ -180,12 +266,12 @@ mod tests {
             names.into_iter(),
             "missing.zip",
             "v0.1.0",
-            "lsp.tokenburn.binary.path",
+            "lsp.TokenBurn.binary.path",
         )
         .unwrap_err();
         assert!(e.contains("v0.1.0") && e.contains("missing.zip"), "{e}");
         assert!(e.contains("cargo install --git"), "{e}");
-        assert!(e.contains("lsp.tokenburn.binary.path"), "{e}");
+        assert!(e.contains("lsp.TokenBurn.binary.path"), "{e}");
     }
 
     #[test]

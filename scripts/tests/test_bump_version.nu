@@ -24,7 +24,7 @@ name = "TokenBurn"
 version = "0.1.0"
 schema_version = 1
 
-[language_servers.tokenburn]
+[language_servers.TokenBurn]
 name = "TokenBurn"
 '
 
@@ -64,7 +64,7 @@ def "test bump: only the workspace.package version changes" [] {
 def "test bump: extension version changes once" [] {
     let out = (set_extension_version $EXT "0.2.0")
     assert equal ($out | from toml | get version) "0.2.0"
-    assert equal ($out | from toml | get language_servers.tokenburn.name) "TokenBurn"
+    assert equal ($out | from toml | get language_servers.TokenBurn.name) "TokenBurn"
     assert equal ($out | lines | where {|l| $l starts-with "version" } | length) 1
 }
 

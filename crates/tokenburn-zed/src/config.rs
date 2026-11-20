@@ -4,7 +4,7 @@
 //!
 //! ```jsonc
 //! "lsp": {
-//!   "tokenburn": {
+//!   "TokenBurn": {
 //!     "settings": { "period": "today", "show_rate": true, "budgets": { "day_tokens": 5000000 } }
 //!   }
 //! }
@@ -210,8 +210,9 @@ impl Config {
     /// Overlay the keys present in `v` (anything but an object is ignored; so is
     /// a key whose value has the wrong type or is out of range).
     pub fn apply(&mut self, v: &Value) {
-        // Zed hands over `lsp.tokenburn.settings`; accept a `tokenburn` wrapper too.
-        let v = match v.get("tokenburn") {
+        // Zed hands over `lsp.TokenBurn.settings`; accept a `TokenBurn` (or the older
+        // `tokenburn`) wrapper too.
+        let v = match v.get("TokenBurn").or_else(|| v.get("tokenburn")) {
             Some(inner) if inner.is_object() => inner,
             _ => v,
         };
@@ -436,6 +437,8 @@ mod tests {
     #[test]
     fn a_tokenburn_wrapper_is_unwrapped() {
         let c = Config::from_layers([&json!({ "tokenburn": { "period": "all" } })]);
+        assert_eq!(c.period, Span::All, "the older wrapper still works");
+        let c = Config::from_layers([&json!({ "TokenBurn": { "period": "all" } })]);
         assert_eq!(c.period, Span::All);
     }
 

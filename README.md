@@ -74,7 +74,7 @@ progress. So there are two small extensions and one native binary:
 ```
 ┌─────────────────── Zed ───────────────────┐        ┌──────── tokenburn-zed (native) ───────┐
 │ TokenBurn            (tokenburn, src/)    │ starts │ lsp: one $/progress kept open,        │
-│  • language server "tokenburn"            ├───────▶│      message = the status line        │──▶ tokenburn-core
+│  • language server "TokenBurn"            ├───────▶│      message = the status line        │──▶ tokenburn-core
 │ TokenBurn MCP Server (tokenburn-mcp-server│        │ mcp: read-only usage tools            │    (local logs)
 │  , mcp/) • context server "tokenburn"     ├───────▶│                                       │
 └───────────────────────────────────────────┘        └───────────────────────────────────────┘
@@ -188,12 +188,14 @@ tokenburn-web on that port (checked via `/api/themes`); otherwise set `dashboard
 
 ## Settings
 
-Zed `settings.json` — everything optional:
+Zed `settings.json` — everything optional. The language server is called `TokenBurn`
+(the name Zed prints in front of the status text); from 0.1.5 on, settings under the
+older `lsp.tokenburn` key are still read, and `lsp.TokenBurn` wins where both set a value.
 
 ```jsonc
 {
   "lsp": {
-    "tokenburn": {
+    "TokenBurn": {
       "settings": {
         "period": "today",          // hour | today | week | month | year | all
         "tool": "all",              // all | pi | zed | claude | codex | copilot | gemini | opencode | amp | cline | roo | kilo | qwen

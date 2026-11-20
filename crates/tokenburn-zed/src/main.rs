@@ -30,7 +30,7 @@ OPTIONS (status, report, dashboard):
     -h, --help       this help
     -V, --version    version
 
-Settings (JSON, like Zed's `lsp.tokenburn.settings`) are also read from
+Settings (JSON, like Zed's `lsp.TokenBurn.settings`) are also read from
 $TOKENBURN_ZED_SETTINGS.";
 
 /// Turn `--period week --tool pi --no-cache` into a settings layer.

@@ -13,7 +13,7 @@ def "test extension: the status bar extension only provides the language server"
     let ext = (open (root | path join "extension.toml"))
     assert equal $ext.id "tokenburn"
     assert equal $ext.schema_version 1
-    assert equal ($ext.language_servers | columns) ["tokenburn"]
+    assert equal ($ext.language_servers | columns) ["TokenBurn"]
     assert ("context_servers" not-in ($ext | columns))
 }
 
@@ -51,7 +51,7 @@ def "test extension: Cargo workspace builds both extensions" [] {
 }
 
 def "test extension: the language server runs for common languages" [] {
-    let langs = (open (root | path join "extension.toml") | get language_servers.tokenburn.languages)
+    let langs = (open (root | path join "extension.toml") | get language_servers.TokenBurn.languages)
     for l in ["Rust" "Python" "TypeScript" "Markdown" "JSON" "Plain Text" "Nu" "TOML"] {
         assert ($l in $langs) $"($l) is listed"
     }

@@ -9,8 +9,10 @@ repository = "https://github.com/sorinirimies/zed-tokenburn"
 # The language server never looks at your code: Zed shows a language server's
 # progress in the status bar, and that is where the live counter lives. It is
 # registered for as many languages as possible so it runs whatever file is open
-# (unknown names are ignored by Zed). Settings: `lsp.tokenburn` in settings.json.
-[language_servers.tokenburn]
+# (unknown names are ignored by Zed). Settings: `lsp.TokenBurn` in settings.json (the older
+# `lsp.tokenburn` is still read). The key is the name Zed prints before the idle status
+# text, `(TokenBurn) 🔥 …`, so it is spelled like the progress title.
+[language_servers.TokenBurn]
 name = "TokenBurn"
 languages = [
     "Plain Text",

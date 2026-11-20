@@ -26,7 +26,7 @@ Check the release has `tokenburn-zed-{aarch64,x86_64}-apple-darwin.tar.gz`,
 ## 2. Test at the commit you submit
 
 The registry requires a manual test at the submitted commit. Remove any
-`lsp.tokenburn.binary.path` / `binary_path` from your Zed settings so the download
+`lsp.TokenBurn.binary.path` / `binary_path` from your Zed settings so the download
 path is exercised, then:
 
 1. `zed: install dev extension` → this folder. Open a file in a trusted project; the
@@ -81,7 +81,7 @@ For each: `pnpm sort-extensions`, commit, push, `gh pr create`.
 > exists.
 >
 > The native server (`tokenburn-zed`, MIT, in the same repository) is downloaded from
-> the GitHub releases, or taken from `PATH` / `lsp.tokenburn.binary.path`; it is not
+> the GitHub releases, or taken from `PATH` / `lsp.TokenBurn.binary.path`; it is not
 > bundled. Tested manually at the submitted commit on macOS.
 
 ### PR text — `tokenburn-mcp-server`
